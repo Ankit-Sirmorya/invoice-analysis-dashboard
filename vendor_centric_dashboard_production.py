@@ -145,11 +145,11 @@ class VendorCentricDashboard:
             
             query = """
             SELECT 
-                COUNT(DISTINCT filename) as invoice_count,
+                COUNT(DISTINCT i.filename) as invoice_count,
                 SUM(i.total_amount) as total_spending,
                 AVG(i.total_amount) as avg_invoice_value,
-                MIN(date) as first_order,
-                MAX(date) as last_order,
+                MIN(i.date) as first_order,
+                MAX(i.date) as last_order,
                 COUNT(l.id) as line_item_count
             FROM invoices i
             LEFT JOIN line_items l ON i.filename = l.filename
