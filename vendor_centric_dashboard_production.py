@@ -143,21 +143,37 @@ class VendorCentricDashboard:
             if not self.conn:
                 return pd.DataFrame()
             
+            # Use separate queries to avoid JOIN inflation
             query = """
             SELECT 
-                COUNT(DISTINCT i.filename) as invoice_count,
-                SUM(i.total_amount) as total_spending,
-                AVG(i.total_amount) as avg_invoice_value,
-                MIN(i.date) as first_order,
-                MAX(i.date) as last_order,
-                COUNT(l.id) as line_item_count
-            FROM invoices i
-            LEFT JOIN line_items l ON i.filename = l.filename
-            WHERE i.vendor = ?
-            GROUP BY i.vendor
+                COUNT(DISTINCT filename) as invoice_count,
+                SUM(total_amount) as total_spending,
+                AVG(total_amount) as avg_invoice_value,
+                MIN(date) as first_order,
+                MAX(date) as last_order
+            FROM invoices
+            WHERE vendor = ?
+            GROUP BY vendor
             """
-            df = pd.read_sql_query(query, self.conn, params=(vendor_name,))
-            return df
+            
+            # Get invoice data
+            invoice_df = pd.read_sql_query(query, self.conn, params=(vendor_name,))
+            
+            # Get line item count separately
+            line_query = """
+            SELECT COUNT(*) as line_item_count
+            FROM line_items l
+            JOIN invoices i ON l.filename = i.filename
+            WHERE i.vendor = ?
+            """
+            
+            line_df = pd.read_sql_query(line_query, self.conn, params=(vendor_name,))
+            
+            # Combine the results
+            if not invoice_df.empty and not line_df.empty:
+                invoice_df['line_item_count'] = line_df.iloc[0]['line_item_count']
+            
+            return invoice_df
         except Exception as e:
             st.error(f"Error getting vendor overview: {e}")
             return pd.DataFrame()
