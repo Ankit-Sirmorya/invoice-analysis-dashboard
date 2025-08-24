@@ -386,8 +386,8 @@ class VendorCentricDashboard:
 
 def show_combined_analysis(dashboard):
     """Show combined analysis across all vendors."""
-    st.subheader("🌐 Combined Vendor Analysis")
-    st.markdown("**Cross-vendor insights and optimization opportunities**")
+    st.subheader("🏪 Restaurant Supply Chain Overview")
+    st.markdown("**Comprehensive vendor performance analysis for Westman's Bagels & Coffee operations**")
     
     try:
         conn = dashboard.conn
@@ -398,7 +398,7 @@ def show_combined_analysis(dashboard):
         cursor = conn.cursor()
         
         # 1. Vendor Summary
-        st.subheader("📊 Vendor Summary")
+        st.subheader("📊 Supply Chain Partner Summary")
         summary_query = """
         SELECT 
             vendor,
@@ -430,7 +430,7 @@ def show_combined_analysis(dashboard):
             st.dataframe(summary_df, use_container_width=True)
         
         # 2. Risk Analysis (High Concentration Risk)
-        st.subheader("🚨 Risk Analysis")
+        st.subheader("🚨 Supply Chain Risk Assessment")
         if not summary_df.empty:
             top_vendor = summary_df.iloc[0]
             top_vendor_pct = (top_vendor['total_spending'] / total_spending) * 100
@@ -441,7 +441,7 @@ def show_combined_analysis(dashboard):
                 st.success("✅ **Good Vendor Diversity**: No single vendor represents more than 40% of spending")
         
         # 3. Optimization Opportunities
-        st.subheader("💰 Cost Optimization Opportunities")
+        st.subheader("💰 Restaurant Cost Optimization Opportunities")
         high_spending = summary_df[summary_df['total_spending'] > 1000]
         if not high_spending.empty:
             st.write("**High-Spending Vendors (Negotiation Priority):**")
@@ -449,7 +449,7 @@ def show_combined_analysis(dashboard):
                 st.write(f"   • **{row['vendor']}**: ${row['total_spending']:,.2f} across {row['invoice_count']} invoices")
         
         # 4. Strategic Recommendations
-        st.subheader("🎯 Strategic Recommendations")
+        st.subheader("🎯 Strategic Business Recommendations")
         recommendations = []
         if not summary_df.empty:
             if len(summary_df) > 5: 
@@ -462,7 +462,7 @@ def show_combined_analysis(dashboard):
             st.write(rec)
         
         # 5. Savings Potential
-        st.subheader("💡 Estimated Savings Potential")
+        st.subheader("💡 Estimated Annual Savings for Westman's Bagels")
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Conservative Estimates:**")
@@ -478,7 +478,7 @@ def show_combined_analysis(dashboard):
             st.write("**Total**: **$21,600 - $33,600 annually**")
         
         # Download combined report
-        st.subheader("📥 Download Combined Analysis")
+        st.subheader("📥 Download Restaurant Supply Chain Report")
         report_data = {
             'Vendor': summary_df['vendor'],
             'Invoice_Count': summary_df['invoice_count'],
@@ -489,9 +489,9 @@ def show_combined_analysis(dashboard):
         report_df = pd.DataFrame(report_data)
         csv = report_df.to_csv(index=False)
         st.download_button(
-            label="📥 Download Combined Analysis CSV",
+            label="📥 Download Restaurant Supply Chain Report",
             data=csv,
-            file_name="combined_vendor_analysis.csv",
+            file_name="westmans_bagels_supply_chain_analysis.csv",
             mime="text/csv"
         )
             
@@ -500,15 +500,185 @@ def show_combined_analysis(dashboard):
         st.info("Please ensure all vendor data is properly loaded.")
 
 def main():
-    st.markdown('<h1 class="main-header">🏢 Vendor-Centric Invoice Analysis</h1>', unsafe_allow_html=True)
-    st.markdown("### **🌐 Combined Analysis is always visible above | Select any vendor below to see vendor-specific analysis in organized tabs**")
+    st.set_page_config(
+        page_title="Westman's Bagels - Vendor Management Dashboard",
+        page_icon="🥯",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    # Deployment information
+    # Enhanced Custom CSS for restaurant dashboard
     st.markdown("""
-    <div class="deployment-info">
-        <strong>🚀 Deployment Status:</strong> Production Ready<br>
-        <strong>📊 Database:</strong> SQLite (invoice_line_items.db)<br>
-        <strong>🌐 Access:</strong> Available on all devices in network
+    <style>
+    .main-header {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 50%, #2c3e50 100%);
+        padding: 3rem 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .main-header h1 {
+        margin: 0;
+        font-size: 3rem;
+        font-weight: 800;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        font-family: 'Georgia', serif;
+    }
+    .main-header .restaurant-name {
+        font-size: 1.8rem;
+        font-weight: 600;
+        margin: 0.5rem 0;
+        opacity: 0.95;
+        font-family: 'Georgia', serif;
+    }
+    .main-header .dashboard-subtitle {
+        margin: 1rem 0 0 0;
+        font-size: 1.3rem;
+        opacity: 0.9;
+        font-weight: 300;
+    }
+    .main-header .business-info {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1rem;
+        border-radius: 10px;
+        margin-top: 1.5rem;
+        display: inline-block;
+        backdrop-filter: blur(10px);
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+        text-align: center;
+        border: 1px solid #e9ecef;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+    }
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #e74c3c, #f39c12, #27ae60, #3498db);
+    }
+    .metric-card h3 {
+        color: #495057;
+        margin: 0 0 1rem 0;
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 600;
+    }
+    .metric-card h2 {
+        color: #2c3e50;
+        margin: 0;
+        font-size: 2.2rem;
+        font-weight: 800;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+    }
+    .vendor-header {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 15px;
+        text-align: center;
+        margin: 2rem 0;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .vendor-header h2 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: 700;
+        font-family: 'Georgia', serif;
+    }
+    .business-summary {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        margin: 2rem 0;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    }
+    .business-summary h3 {
+        color: #2c3e50;
+        margin: 0 0 1rem 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        font-family: 'Georgia', serif;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 55px;
+        white-space: pre-wrap;
+        background-color: #ffffff;
+        border-radius: 8px;
+        gap: 1rem;
+        padding: 15px 20px;
+        font-weight: 600;
+        border: 1px solid #dee2e6;
+        transition: all 0.2s ease;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        transform: translateY(-1px);
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e9ecef;
+        border-color: #2c3e50;
+    }
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+    }
+    .stSelectbox > div > div {
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #dee2e6;
+    }
+    .stSelectbox > div > div:hover {
+        border-color: #2c3e50;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="main-header">
+        <h1>🥯 Westman's Bagels & Coffee</h1>
+        <div class="restaurant-name">Vendor Management & Cost Analysis Dashboard</div>
+        <div class="dashboard-subtitle">Professional restaurant supply chain optimization platform</div>
+        <div class="business-info">
+            <strong>🏪 Restaurant Operations Dashboard</strong> | 
+            <strong>📊 Real-time Vendor Analytics</strong> | 
+            <strong>💰 Cost Optimization Insights</strong>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Business context and dashboard overview
+    st.markdown("""
+    <div class="business-summary">
+        <h3>🏪 Restaurant Operations Overview</h3>
+        <p><strong>Welcome to your comprehensive vendor management dashboard!</strong> This platform provides real-time insights into your restaurant's supply chain costs, helping you make data-driven decisions to optimize spending and improve profitability.</p>
+        <p><strong>Key Features:</strong> Vendor performance analysis, cost optimization opportunities, spending trends, and strategic recommendations for Westman's Bagels & Coffee operations.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -526,37 +696,82 @@ def main():
             st.error("No vendors found in database.")
             return
         
-        # Vendor selection
-        st.sidebar.title("🎯 Vendor Selection")
+        # Enhanced sidebar for restaurant operations
+        st.sidebar.markdown("""
+        <div style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); padding: 1.5rem; border-radius: 15px; color: white; margin-bottom: 2rem;">
+            <h2 style="margin: 0; text-align: center; font-family: 'Georgia', serif;">🥯 Westman's Bagels</h2>
+            <p style="text-align: center; margin: 0.5rem 0; opacity: 0.9;">Vendor Management Dashboard</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.sidebar.markdown("### 🎯 Vendor Selection")
         selected_vendor = st.sidebar.selectbox(
             "Choose a vendor to analyze:",
             vendors,
-            index=0
+            index=0,
+            help="Select any vendor to view detailed analysis, spending patterns, and optimization opportunities"
         )
+        
+        # Quick stats in sidebar
+        if selected_vendor:
+            vendor_stats = dashboard.get_vendor_overview(selected_vendor)
+            if not vendor_stats.empty:
+                stats = vendor_stats.iloc[0]
+                st.sidebar.markdown("---")
+                st.sidebar.markdown("### 📊 Quick Stats")
+                st.sidebar.metric("Total Spending", f"${stats['total_spending']:,.0f}")
+                st.sidebar.metric("Invoice Count", stats['invoice_count'])
+                st.sidebar.metric("Avg Invoice", f"${stats['avg_invoice_value']:,.0f}")
+        
+        # Restaurant operations info
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🏪 Restaurant Info")
+        st.sidebar.info("""
+        **Westman's Bagels & Coffee**  
+        Professional vendor management platform  
+        Real-time cost optimization insights
+        """)
         
         if selected_vendor:
             show_vendor_analysis(dashboard, selected_vendor)
     
     finally:
         dashboard.disconnect_db()
+    
+    # Professional restaurant dashboard footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 15px; margin-top: 3rem;">
+        <h3 style="color: #2c3e50; font-family: Georgia, serif; margin-bottom: 1rem;">🥯 Westman's Bagels & Coffee</h3>
+        <p style="color: #495057; margin: 0;"><strong>Professional Vendor Management Dashboard</strong> | 
+        <strong>Real-time Cost Optimization</strong> | 
+        <strong>Strategic Supply Chain Insights</strong></p>
+        <p style="color: #6c757d; margin: 0.5rem 0 0 0; font-size: 0.9rem;">Powered by advanced analytics for restaurant operations excellence</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 def show_vendor_analysis(dashboard, vendor_name):
     """Show comprehensive analysis for the selected vendor."""
     
     try:
-        # Combined Analysis Section (Always visible)
+        # Enhanced Combined Analysis Section for Restaurant Operations
         st.markdown("---")
-        with st.expander("🌐 **Combined Vendor Analysis** - Click to expand/collapse", expanded=True):
-            st.markdown('<h3 style="text-align: center; color: #667eea;">🌐 Combined Vendor Analysis</h3>', unsafe_allow_html=True)
-            st.markdown("**Cross-vendor insights and optimization opportunities**")
+        with st.expander("🏪 **Restaurant-Wide Vendor Analysis** - Click to expand/collapse", expanded=True):
+            st.markdown('<h3 style="text-align: center; color: #2c3e50; font-family: Georgia, serif;">🏪 Restaurant-Wide Vendor Analysis</h3>', unsafe_allow_html=True)
+            st.markdown('<p style="text-align: center; font-size: 1.1rem; color: #495057;"><strong>Comprehensive supply chain insights for Westman\'s Bagels & Coffee operations</strong></p>', unsafe_allow_html=True)
             
             # Show combined analysis
             show_combined_analysis(dashboard)
         
         st.markdown("---")
         
-        # Vendor header
-        st.markdown(f'<h2 class="vendor-header">🏢 {vendor_name}</h2>', unsafe_allow_html=True)
+        # Enhanced vendor header for restaurant operations
+        st.markdown(f"""
+        <div class="vendor-header">
+            <h2>🏢 {vendor_name}</h2>
+            <p style="margin: 0.5rem 0 0 0; font-size: 1.1rem; opacity: 0.9;">Supply Chain Partner Analysis & Cost Optimization</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Get vendor data
         vendor_overview = dashboard.get_vendor_overview(vendor_name)
@@ -612,14 +827,14 @@ def show_vendor_analysis(dashboard, vendor_name):
         
         st.markdown("---")
         
-        # Analysis tabs (now only 6 tabs, Combined Analysis moved above)
+        # Enhanced analysis tabs for restaurant operations
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "📊 Overview", 
-            "🚨 Duplicates", 
-            "📅 Trends", 
-            "📦 Categories", 
-            "💰 Pricing", 
-            "📋 Details"
+            "📊 Business Overview", 
+            "🚨 Duplicate Detection", 
+            "📅 Spending Trends", 
+            "📦 Product Categories", 
+            "💰 Cost Analysis", 
+            "📋 Invoice Details"
         ])
         
         with tab1:
