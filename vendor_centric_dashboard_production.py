@@ -352,13 +352,17 @@ class VendorCentricDashboard:
             SELECT 
                 filename,
                 date,
-                total_amount,
-                strftime('%Y-%m-%d', date) as formatted_date
+                total_amount
             FROM invoices 
             WHERE vendor = ?
             ORDER BY date DESC
             """
             df = pd.read_sql_query(query, self.conn, params=(vendor_name,))
+            
+            # Convert date column to datetime for better handling
+            if not df.empty and 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'], errors='coerce')
+            
             return df
         except Exception as e:
             st.error(f"Error getting vendor details: {e}")
@@ -523,98 +527,106 @@ def main():
 def show_vendor_analysis(dashboard, vendor_name):
     """Show comprehensive analysis for the selected vendor."""
     
-    # Combined Analysis Section (Always visible)
-    st.markdown("---")
-    with st.expander("🌐 **Combined Vendor Analysis** - Click to expand/collapse", expanded=True):
-        st.markdown('<h3 style="text-align: center; color: #667eea;">🌐 Combined Vendor Analysis</h3>', unsafe_allow_html=True)
-        st.markdown("**Cross-vendor insights and optimization opportunities**")
+    try:
+        # Combined Analysis Section (Always visible)
+        st.markdown("---")
+        with st.expander("🌐 **Combined Vendor Analysis** - Click to expand/collapse", expanded=True):
+            st.markdown('<h3 style="text-align: center; color: #667eea;">🌐 Combined Vendor Analysis</h3>', unsafe_allow_html=True)
+            st.markdown("**Cross-vendor insights and optimization opportunities**")
+            
+            # Show combined analysis
+            show_combined_analysis(dashboard)
         
-        # Show combined analysis
-        show_combined_analysis(dashboard)
-    
-    st.markdown("---")
-    
-    # Vendor header
-    st.markdown(f'<h2 class="vendor-header">🏢 {vendor_name}</h2>', unsafe_allow_html=True)
-    
-    # Get vendor data
-    vendor_overview = dashboard.get_vendor_overview(vendor_name)
-    
-    if vendor_overview.empty:
-        st.error(f"No data found for {vendor_name}")
-        return
-    
-    vendor_data = vendor_overview.iloc[0]
-    
-    # Key metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>📄 Total Invoices</h3>
-            <h2>{vendor_data['invoice_count']}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>💰 Total Spending</h3>
-            <h2>${vendor_data['total_spending']:,.0f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>📦 Line Items</h3>
-            <h2>{vendor_data['line_item_count']}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        avg_invoice = vendor_data['avg_invoice_value'] if pd.notna(vendor_data['avg_invoice_value']) else 0
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>📊 Avg Invoice</h3>
-            <h2>${avg_invoice:,.0f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Date range info
-    if vendor_data['first_order'] and vendor_data['last_order'] and pd.notna(vendor_data['first_order']) and pd.notna(vendor_data['last_order']):
-        st.info(f"**📅 Order Period**: {vendor_data['first_order']} to {vendor_data['last_order']}")
-    
-    st.markdown("---")
-    
-    # Analysis tabs (now only 6 tabs, Combined Analysis moved above)
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 Overview", 
-        "🚨 Duplicates", 
-        "📅 Trends", 
-        "📦 Categories", 
-        "💰 Pricing", 
-        "📋 Details"
-    ])
-    
-    with tab1:
-        show_vendor_overview(dashboard, vendor_name, vendor_data)
-    
-    with tab2:
-        show_vendor_duplicates(dashboard, vendor_name)
-    
-    with tab3:
-        show_vendor_trends(dashboard, vendor_name)
-    
-    with tab4:
-        show_vendor_categories(dashboard, vendor_name)
-    
-    with tab5:
-        show_vendor_pricing(dashboard, vendor_name)
-    
-    with tab6:
-        show_vendor_details(dashboard, vendor_name)
+        st.markdown("---")
+        
+        # Vendor header
+        st.markdown(f'<h2 class="vendor-header">🏢 {vendor_name}</h2>', unsafe_allow_html=True)
+        
+        # Get vendor data
+        vendor_overview = dashboard.get_vendor_overview(vendor_name)
+        
+        if vendor_overview.empty:
+            st.error(f"No data found for {vendor_name}")
+            return
+        
+        vendor_data = vendor_overview.iloc[0]
+        
+        # Key metrics row
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>📄 Total Invoices</h3>
+                <h2>{vendor_data['invoice_count']}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>💰 Total Spending</h3>
+                <h2>${vendor_data['total_spending']:,.0f}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>📦 Line Items</h3>
+                <h2>{vendor_data['line_item_count']}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            avg_invoice = vendor_data['avg_invoice_value'] if pd.notna(vendor_data['avg_invoice_value']) else 0
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>📊 Avg Invoice</h3>
+                <h2>${avg_invoice:,.0f}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Date range info with error handling
+        try:
+            if vendor_data['first_order'] and vendor_data['last_order'] and pd.notna(vendor_data['first_order']) and pd.notna(vendor_data['last_order']):
+                st.info(f"**📅 Order Period**: {vendor_data['first_order']} to {vendor_data['last_order']}")
+        except Exception as e:
+            st.warning("**📅 Order Period**: Date information not available")
+        
+        st.markdown("---")
+        
+        # Analysis tabs (now only 6 tabs, Combined Analysis moved above)
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "📊 Overview", 
+            "🚨 Duplicates", 
+            "📅 Trends", 
+            "📦 Categories", 
+            "💰 Pricing", 
+            "📋 Details"
+        ])
+        
+        with tab1:
+            show_vendor_overview(dashboard, vendor_name, vendor_data)
+        
+        with tab2:
+            show_vendor_duplicates(dashboard, vendor_name)
+        
+        with tab3:
+            show_vendor_trends(dashboard, vendor_name)
+        
+        with tab4:
+            show_vendor_categories(dashboard, vendor_name)
+        
+        with tab5:
+            show_vendor_pricing(dashboard, vendor_name)
+        
+        with tab6:
+            show_vendor_details(dashboard, vendor_name)
+            
+    except Exception as e:
+        st.error(f"Error displaying vendor analysis: {str(e)}")
+        st.info("Please try refreshing the page or selecting a different vendor.")
 
 def show_vendor_overview(dashboard, vendor_name, vendor_data):
     """Show vendor overview and insights."""
@@ -852,10 +864,31 @@ def show_vendor_details(dashboard, vendor_name):
     with col3:
         st.metric("Average Value", f"${avg_value:,.2f}")
     
-    # Date range
+    # Date range with proper error handling
     if not details_df.empty:
-        date_range = details_df['date'].max() - details_df['date'].min()
-        st.info(f"**📅 Date Range**: {details_df['date'].min()} to {details_df['date'].max()} ({date_range.days} days)")
+        try:
+            # Convert date column to datetime if it's not already
+            if details_df['date'].dtype == 'object':
+                # Try to convert string dates to datetime
+                details_df['date'] = pd.to_datetime(details_df['date'], errors='coerce')
+            
+            # Check if we have valid dates
+            valid_dates = details_df['date'].dropna()
+            if len(valid_dates) > 0:
+                min_date = valid_dates.min()
+                max_date = valid_dates.max()
+                
+                if pd.notna(min_date) and pd.notna(max_date):
+                    date_range = max_date - min_date
+                    st.info(f"**📅 Date Range**: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')} ({date_range.days} days)")
+                else:
+                    st.info("**📅 Date Range**: Available but some dates may be invalid")
+            else:
+                st.info("**📅 Date Range**: No valid dates available")
+                
+        except Exception as e:
+            st.warning(f"**📅 Date Range**: Could not calculate date range: {str(e)}")
+            st.info("**📅 Date Range**: Check date format in database")
 
 if __name__ == "__main__":
     main()
