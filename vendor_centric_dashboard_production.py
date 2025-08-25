@@ -384,6 +384,175 @@ class VendorCentricDashboard:
             st.error(f"Error getting vendor details: {e}")
             return pd.DataFrame()
 
+    def get_all_vendors_monthly_trends(self):
+        """Get monthly spending trends across all vendors."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            query = """
+            SELECT 
+                strftime('%Y-%m', date) as month,
+                vendor,
+                COUNT(DISTINCT filename) as invoice_count,
+                SUM(total_amount) as total_spending,
+                AVG(total_amount) as avg_invoice_value
+            FROM invoices 
+            WHERE date IS NOT NULL AND date != '' AND vendor IS NOT NULL AND vendor != ''
+            GROUP BY month, vendor
+            ORDER BY month, total_spending DESC
+            """
+            df = pd.read_sql_query(query, self.conn)
+            
+            if not df.empty:
+                df['month'] = pd.to_datetime(df['month'] + '-01')
+                df['month_name'] = df['month'].dt.strftime('%b %Y')
+            
+            return df
+        except Exception as e:
+            st.error(f"Error getting all vendors monthly trends: {e}")
+            return pd.DataFrame()
+
+    def get_all_vendors_seasonal_analysis(self):
+        """Get seasonal spending patterns across all vendors."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            query = """
+            SELECT 
+                vendor,
+                CASE 
+                    WHEN strftime('%m', date) IN ('12', '01', '02') THEN 'Winter'
+                    WHEN strftime('%m', date) IN ('03', '04', '05') THEN 'Spring'
+                    WHEN strftime('%m', date) IN ('06', '07', '08') THEN 'Summer'
+                    WHEN strftime('%m', date) IN ('09', '10', '11') THEN 'Fall'
+                    ELSE 'Unknown'
+                END as season,
+                COUNT(DISTINCT filename) as invoice_count,
+                SUM(total_amount) as total_spending,
+                AVG(total_amount) as avg_invoice_value
+            FROM invoices 
+            WHERE date IS NOT NULL AND date != '' AND vendor IS NOT NULL AND vendor != ''
+            GROUP BY vendor, season
+            ORDER BY vendor, 
+                CASE season
+                    WHEN 'Winter' THEN 1
+                    WHEN 'Spring' THEN 2
+                    WHEN 'Summer' THEN 3
+                    WHEN 'Fall' THEN 4
+                    ELSE 5
+                END
+            """
+            df = pd.read_sql_query(query, self.conn)
+            return df
+        except Exception as e:
+            st.error(f"Error getting all vendors seasonal analysis: {e}")
+            return pd.DataFrame()
+
+    def get_all_vendors_weekly_patterns(self):
+        """Get weekly spending patterns across all vendors."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            query = """
+            SELECT 
+                strftime('%W', date) as week_number,
+                strftime('%Y', date) as year,
+                vendor,
+                COUNT(DISTINCT filename) as invoice_count,
+                SUM(total_amount) as total_spending
+            FROM invoices 
+            WHERE date IS NOT NULL AND date != '' AND vendor IS NOT NULL AND vendor != ''
+            GROUP BY week_number, year, vendor
+            ORDER BY year, week_number, total_spending DESC
+            """
+            df = pd.read_sql_query(query, self.conn)
+            
+            if not df.empty:
+                df['week_label'] = df['year'] + ' W' + df['week_number']
+            
+            return df
+        except Exception as e:
+            st.error(f"Error getting all vendors weekly patterns: {e}")
+            return pd.DataFrame()
+
+    def get_all_vendors_daily_analysis(self):
+        """Get daily spending analysis across all vendors."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            query = """
+            SELECT 
+                date,
+                vendor,
+                COUNT(DISTINCT filename) as invoice_count,
+                SUM(total_amount) as total_spending
+            FROM invoices 
+            WHERE date IS NOT NULL AND date != '' AND vendor IS NOT NULL AND vendor != ''
+            GROUP BY date, vendor
+            ORDER BY date DESC, total_spending DESC
+            """
+            df = pd.read_sql_query(query, self.conn)
+            
+            if not df.empty:
+                df['date'] = pd.to_datetime(df['date'])
+                df['day_of_week'] = df['date'].dt.day_name()
+                df['month'] = df['date'].dt.month_name()
+            
+            return df
+        except Exception as e:
+            st.error(f"Error getting all vendors daily analysis: {e}")
+            return pd.DataFrame()
+
+    def get_time_based_optimization_insights(self):
+        """Get time-based optimization insights across all vendors."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            # Get monthly trends for optimization analysis
+            monthly_data = self.get_all_vendors_monthly_trends()
+            
+            if monthly_data.empty:
+                return pd.DataFrame()
+            
+            insights = []
+            
+            # Analyze spending volatility
+            vendor_volatility = monthly_data.groupby('vendor')['total_spending'].agg(['mean', 'std']).reset_index()
+            vendor_volatility['coefficient_of_variation'] = vendor_volatility['std'] / vendor_volatility['mean']
+            
+            # High volatility vendors (opportunity for bulk ordering)
+            high_volatility = vendor_volatility[vendor_volatility['coefficient_of_variation'] > 0.5]
+            if not high_volatility.empty:
+                for _, row in high_volatility.iterrows():
+                    insights.append({
+                        'vendor': row['vendor'],
+                        'insight_type': 'High Spending Volatility',
+                        'recommendation': 'Consider bulk ordering and inventory management',
+                        'metric': f"CV: {row['coefficient_of_variation']:.2f}"
+                    })
+            
+            # Seasonal patterns
+            seasonal_data = self.get_all_vendors_seasonal_analysis()
+            if not seasonal_data.empty:
+                seasonal_spending = seasonal_data.groupby('season')['total_spending'].sum().reset_index()
+                peak_season = seasonal_spending.loc[seasonal_spending['total_spending'].idxmax()]
+                insights.append({
+                    'vendor': 'All Vendors',
+                    'insight_type': 'Seasonal Peak',
+                    'recommendation': f'Peak spending in {peak_season["season"]} - plan inventory accordingly',
+                    'metric': f"${peak_season['total_spending']:,.0f}"
+                })
+            
+            return pd.DataFrame(insights)
+        except Exception as e:
+            st.error(f"Error getting time-based optimization insights: {e}")
+            return pd.DataFrame()
+
 def show_combined_analysis(dashboard):
     """Show combined analysis across all vendors."""
     st.subheader("🏪 Restaurant Supply Chain Overview")
@@ -476,6 +645,114 @@ def show_combined_analysis(dashboard):
             st.write("• Vendor consolidation: 10-15% = **$4,800 - $7,200**")
             st.write("• Strategic sourcing: 20-30% = **$9,600 - $14,400**")
             st.write("**Total**: **$21,600 - $33,600 annually**")
+        
+        # 6. Comprehensive Time-Based Analysis
+        st.subheader("🕒 Time-Based Spending Analysis & Trends")
+        st.markdown("**Restaurant spending patterns, seasonal trends, and optimization opportunities**")
+        
+        # Time-based analysis tabs
+        time_tab1, time_tab2, time_tab3, time_tab4 = st.tabs([
+            "📅 Monthly Trends", 
+            "🌤️ Seasonal Patterns", 
+            "📊 Weekly Patterns", 
+            "💡 Time-Based Insights"
+        ])
+        
+        with time_tab1:
+            st.markdown("### 📅 Monthly Spending Trends Across All Vendors")
+            monthly_data = dashboard.get_all_vendors_monthly_trends()
+            if not monthly_data.empty:
+                # Monthly spending line chart
+                fig_monthly = px.line(monthly_data, x='month', y='total_spending', color='vendor',
+                                    title="Monthly Spending Trends by Vendor",
+                                    labels={'total_spending': 'Total Spending ($)', 'month': 'Month'})
+                fig_monthly.update_layout(height=500)
+                st.plotly_chart(fig_monthly, use_container_width=True)
+                
+                # Monthly spending heatmap
+                monthly_pivot = monthly_data.pivot(index='month_name', columns='vendor', values='total_spending').fillna(0)
+                fig_heatmap = px.imshow(monthly_pivot, 
+                                      title="Monthly Spending Heatmap by Vendor",
+                                      labels=dict(x="Vendor", y="Month", color="Spending ($)"))
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+                
+                st.write("**Monthly Spending Summary:**")
+                st.dataframe(monthly_data.groupby('month_name')['total_spending'].sum().reset_index(), use_container_width=True)
+            else:
+                st.info("No monthly trend data available")
+        
+        with time_tab2:
+            st.markdown("### 🌤️ Seasonal Spending Patterns")
+            seasonal_data = dashboard.get_all_vendors_seasonal_analysis()
+            if not seasonal_data.empty:
+                # Seasonal spending by vendor
+                fig_seasonal = px.bar(seasonal_data, x='season', y='total_spending', color='vendor',
+                                    title="Seasonal Spending Patterns by Vendor",
+                                    labels={'total_spending': 'Total Spending ($)', 'season': 'Season'})
+                fig_seasonal.update_layout(height=500)
+                st.plotly_chart(fig_seasonal, use_container_width=True)
+                
+                # Seasonal summary
+                seasonal_summary = seasonal_data.groupby('season').agg({
+                    'total_spending': 'sum',
+                    'invoice_count': 'sum'
+                }).reset_index()
+                seasonal_summary['avg_spending'] = seasonal_summary['total_spending'] / seasonal_summary['invoice_count']
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Seasonal Spending Summary:**")
+                    st.dataframe(seasonal_summary, use_container_width=True)
+                with col2:
+                    st.write("**Seasonal Insights:**")
+                    peak_season = seasonal_summary.loc[seasonal_summary['total_spending'].idxmax()]
+                    st.success(f"**Peak Season**: {peak_season['season']} - ${peak_season['total_spending']:,.0f}")
+                    st.info(f"**Average Invoice**: ${seasonal_summary['avg_spending'].mean():,.0f}")
+            else:
+                st.info("No seasonal data available")
+        
+        with time_tab3:
+            st.markdown("### 📊 Weekly Spending Patterns")
+            weekly_data = dashboard.get_all_vendors_weekly_patterns()
+            if not weekly_data.empty:
+                # Weekly spending trends
+                fig_weekly = px.line(weekly_data, x='week_label', y='total_spending', color='vendor',
+                                   title="Weekly Spending Patterns by Vendor",
+                                   labels={'total_spending': 'Total Spending ($)', 'week_label': 'Week'})
+                fig_weekly.update_layout(height=500)
+                st.plotly_chart(fig_weekly, use_container_width=True)
+                
+                # Weekly summary statistics
+                weekly_summary = weekly_data.groupby('vendor').agg({
+                    'total_spending': ['mean', 'std', 'min', 'max']
+                }).round(2)
+                weekly_summary.columns = ['Avg Weekly Spending', 'Std Dev', 'Min Weekly', 'Max Weekly']
+                weekly_summary = weekly_summary.reset_index()
+                
+                st.write("**Weekly Spending Statistics by Vendor:**")
+                st.dataframe(weekly_summary, use_container_width=True)
+            else:
+                st.info("No weekly pattern data available")
+        
+        with time_tab4:
+            st.markdown("### 💡 Time-Based Optimization Insights")
+            time_insights = dashboard.get_time_based_optimization_insights()
+            if not time_insights.empty:
+                st.write("**Key Time-Based Insights:**")
+                for _, insight in time_insights.iterrows():
+                    st.info(f"**{insight['vendor']}**: {insight['insight_type']}")
+                    st.write(f"   • **Recommendation**: {insight['recommendation']}")
+                    st.write(f"   • **Metric**: {insight['metric']}")
+                    st.write("---")
+                
+                # Additional time-based recommendations
+                st.markdown("**🕒 Time-Based Business Recommendations:**")
+                st.write("• **Inventory Planning**: Use seasonal patterns to optimize stock levels")
+                st.write("• **Bulk Ordering**: High volatility periods are opportunities for bulk purchases")
+                st.write("• **Vendor Scheduling**: Coordinate deliveries based on spending patterns")
+                st.write("• **Cash Flow Management**: Plan for seasonal spending variations")
+            else:
+                st.info("No time-based insights available")
         
         # Download combined report
         st.subheader("📥 Download Restaurant Supply Chain Report")
@@ -828,13 +1105,14 @@ def show_vendor_analysis(dashboard, vendor_name):
         st.markdown("---")
         
         # Enhanced analysis tabs for restaurant operations
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "📊 Business Overview", 
             "🚨 Duplicate Detection", 
             "📅 Spending Trends", 
             "📦 Product Categories", 
             "💰 Cost Analysis", 
-            "📋 Invoice Details"
+            "📋 Invoice Details",
+            "🕒 Time Analysis"
         ])
         
         with tab1:
@@ -854,6 +1132,9 @@ def show_vendor_analysis(dashboard, vendor_name):
         
         with tab6:
             show_vendor_details(dashboard, vendor_name)
+        
+        with tab7:
+            show_vendor_time_analysis(dashboard, vendor_name)
             
     except Exception as e:
         st.error(f"Error displaying vendor analysis: {str(e)}")
@@ -1120,6 +1401,123 @@ def show_vendor_details(dashboard, vendor_name):
         except Exception as e:
             st.warning(f"**📅 Date Range**: Could not calculate date range: {str(e)}")
             st.info("**📅 Date Range**: Check date format in database")
+
+
+def show_vendor_time_analysis(dashboard, vendor_name):
+    """Show comprehensive time-based analysis for a specific vendor."""
+    st.subheader("🕒 Time-Based Analysis & Trends")
+    st.markdown(f"**Detailed time analysis for {vendor_name} spending patterns**")
+    
+    # Time analysis tabs
+    time_tab1, time_tab2, time_tab3, time_tab4 = st.tabs([
+        "📅 Monthly Trends", 
+        "🌤️ Seasonal Patterns", 
+        "📊 Weekly Patterns", 
+        "💡 Time Insights"
+    ])
+    
+    with time_tab1:
+        st.markdown("### 📅 Monthly Spending Trends")
+        monthly_data = dashboard.get_vendor_monthly_trends(vendor_name)
+        if not monthly_data.empty:
+            # Monthly spending line chart
+            fig_monthly = px.line(monthly_data, x='month', y='total_spending',
+                                title=f"Monthly Spending Trends - {vendor_name}",
+                                labels={'total_spending': 'Total Spending ($)', 'month': 'Month'})
+            fig_monthly.update_layout(height=500)
+            st.plotly_chart(fig_monthly, use_container_width=True)
+            
+            # Monthly summary
+            monthly_summary = monthly_data.groupby('month').agg({
+                'total_spending': 'sum',
+                'invoice_count': 'sum'
+            }).reset_index()
+            monthly_summary['avg_spending'] = monthly_summary['total_spending'] / monthly_summary['invoice_count']
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Monthly Spending Summary:**")
+                st.dataframe(monthly_summary, use_container_width=True)
+            with col2:
+                st.write("**Monthly Insights:**")
+                peak_month = monthly_summary.loc[monthly_summary['total_spending'].idxmax()]
+                st.success(f"**Peak Month**: {peak_month['month']} - ${peak_month['total_spending']:,.0f}")
+                st.info(f"**Average Monthly Spending**: ${monthly_summary['avg_spending'].mean():,.0f}")
+        else:
+            st.info("No monthly trend data available")
+    
+    with time_tab2:
+        st.markdown("### 🌤️ Seasonal Spending Patterns")
+        seasonal_data = dashboard.get_vendor_seasonal_analysis(vendor_name)
+        if not seasonal_data.empty:
+            # Seasonal spending chart
+            fig_seasonal = px.bar(seasonal_data, x='season', y='total_spending',
+                                title=f"Seasonal Spending Patterns - {vendor_name}",
+                                labels={'total_spending': 'Total Spending ($)', 'season': 'Season'})
+            fig_seasonal.update_layout(height=500)
+            st.plotly_chart(fig_seasonal, use_container_width=True)
+            
+            # Seasonal insights
+            if len(seasonal_data) > 1:
+                seasonal_variation = seasonal_data['total_spending'].max() / seasonal_data['total_spending'].min()
+                st.info(f"**Seasonal Variation**: {seasonal_variation:.1f}x difference between highest and lowest seasons")
+                
+                peak_season = seasonal_data.loc[seasonal_data['total_spending'].idxmax()]
+                st.success(f"**Peak Season**: {peak_season['season']} - ${peak_season['total_spending']:,.0f}")
+        else:
+            st.info("No seasonal data available")
+    
+    with time_tab3:
+        st.markdown("### 📊 Weekly Spending Patterns")
+        weekly_data = dashboard.get_vendor_weekly_patterns(vendor_name)
+        if not weekly_data.empty:
+            # Weekly spending trends
+            fig_weekly = px.line(weekly_data, x='week_label', y='total_spending',
+                               title=f"Weekly Spending Patterns - {vendor_name}",
+                               labels={'total_spending': 'Total Spending ($)', 'week_label': 'Week'})
+            fig_weekly.update_layout(height=500)
+            st.plotly_chart(fig_weekly, use_container_width=True)
+            
+            # Weekly statistics
+            weekly_stats = weekly_data.groupby('year').agg({
+                'total_spending': ['mean', 'std', 'min', 'max']
+            }).round(2)
+            weekly_stats.columns = ['Avg Weekly Spending', 'Std Dev', 'Min Weekly', 'Max Weekly']
+            weekly_stats = weekly_stats.reset_index()
+            
+            st.write("**Weekly Spending Statistics by Year:**")
+            st.dataframe(weekly_stats, use_container_width=True)
+        else:
+            st.info("No weekly pattern data available")
+    
+    with time_tab4:
+        st.markdown("### 💡 Time-Based Business Insights")
+        
+        # Spending volatility analysis
+        monthly_data = dashboard.get_vendor_monthly_trends(vendor_name)
+        if not monthly_data.empty and len(monthly_data) > 1:
+            spending_values = monthly_data['total_spending']
+            volatility = spending_values.std() / spending_values.mean()
+            
+            st.write("**📊 Spending Volatility Analysis:**")
+            if volatility > 0.5:
+                st.warning(f"⚠️ **High Volatility**: Coefficient of variation = {volatility:.2f}")
+                st.write("• **Recommendation**: Consider bulk ordering and inventory management")
+                st.write("• **Opportunity**: High volatility periods are opportunities for bulk purchases")
+            elif volatility > 0.3:
+                st.info(f"📈 **Moderate Volatility**: Coefficient of variation = {volatility:.2f}")
+                st.write("• **Recommendation**: Monitor spending patterns for optimization opportunities")
+            else:
+                st.success(f"✅ **Low Volatility**: Coefficient of variation = {volatility:.2f}")
+                st.write("• **Recommendation**: Stable spending allows for predictable planning")
+        
+        # Time-based recommendations
+        st.markdown("**🕒 Time-Based Recommendations for {vendor_name}:**")
+        st.write("• **Inventory Planning**: Use seasonal patterns to optimize stock levels")
+        st.write("• **Order Timing**: Schedule orders based on spending patterns")
+        st.write("• **Cash Flow**: Plan for seasonal spending variations")
+        st.write("• **Vendor Relations**: Coordinate with vendor based on usage patterns")
+
 
 if __name__ == "__main__":
     main()
