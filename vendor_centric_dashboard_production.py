@@ -220,6 +220,11 @@ class VendorCentricDashboard:
             ORDER BY month
             """
             df = pd.read_sql_query(query, self.conn, params=(vendor_name,))
+            
+            if not df.empty:
+                df['month'] = pd.to_datetime(df['month'] + '-01')
+                df['month_name'] = df['month'].dt.strftime('%b %Y')
+            
             return df
         except Exception as e:
             st.error(f"Error getting monthly trends: {e}")
@@ -242,6 +247,12 @@ class VendorCentricDashboard:
             ORDER BY date
             """
             df = pd.read_sql_query(query, self.conn, params=(vendor_name,))
+            
+            if not df.empty:
+                df['date'] = pd.to_datetime(df['date'])
+                df['day_of_week'] = df['date'].dt.day_name()
+                df['month'] = df['date'].dt.month_name()
+            
             return df
         except Exception as e:
             st.error(f"Error getting daily analysis: {e}")
@@ -265,6 +276,10 @@ class VendorCentricDashboard:
             ORDER BY year, week_number
             """
             df = pd.read_sql_query(query, self.conn, params=(vendor_name,))
+            
+            if not df.empty:
+                df['week_label'] = df['year'] + ' W' + df['week_number']
+            
             return df
         except Exception as e:
             st.error(f"Error getting weekly patterns: {e}")
