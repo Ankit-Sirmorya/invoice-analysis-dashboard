@@ -568,6 +568,349 @@ class VendorCentricDashboard:
             st.error(f"Error getting time-based optimization insights: {e}")
             return pd.DataFrame()
 
+    def get_product_price_variability_insights(self):
+        """Get insights on products with high price variability across vendors."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            query = """
+            SELECT 
+                l.description,
+                l.category,
+                COUNT(DISTINCT i.vendor) as vendor_count,
+                AVG(l.unit_price) as avg_price,
+                MIN(l.unit_price) as min_price,
+                MAX(l.unit_price) as max_price,
+                (MAX(l.unit_price) - MIN(l.unit_price)) as price_range,
+                (MAX(l.unit_price) - MIN(l.unit_price)) / AVG(l.unit_price) * 100 as price_variability_pct,
+                GROUP_CONCAT(DISTINCT i.vendor || ' ($' || l.unit_price || ')') as vendor_prices
+            FROM line_items l
+            JOIN invoices i ON l.filename = i.filename
+            WHERE l.description IS NOT NULL AND l.description != '' 
+                AND l.unit_price > 0
+                AND i.vendor IS NOT NULL AND i.vendor != ''
+            GROUP BY l.description, l.category
+            HAVING vendor_count > 1 AND price_variability_pct > 20
+            ORDER BY price_variability_pct DESC
+            LIMIT 20
+            """
+            
+            df = pd.read_sql_query(query, self.conn)
+            
+            if not df.empty:
+                # Add detailed insights and restaurant-specific recommendations
+                insights = []
+                for _, row in df.iterrows():
+                    # Calculate potential savings
+                    potential_savings = row['price_range'] * 10  # Assuming 10 units per month
+                    annual_savings = potential_savings * 12
+                    
+                    if row['price_variability_pct'] > 50:
+                        insight_type = "🚨 High Price Variability - Immediate Action Required"
+                        recommendation = f"Switch to lower-priced vendor or negotiate better rates. You could save ${annual_savings:.2f} annually on this product."
+                        business_impact = f"High impact: ${annual_savings:.2f} annual savings potential"
+                        example = f"Example: If you buy 10 {row['description']} per month, switching from ${row['max_price']:.2f} to ${row['min_price']:.2f} saves ${row['price_range']:.2f} per order = ${annual_savings:.2f} annually"
+                    elif row['price_variability_pct'] > 30:
+                        insight_type = "⚠️ Moderate Price Variability - Monitor Closely"
+                        recommendation = f"Monitor pricing and consider vendor consolidation. Potential annual savings: ${annual_savings:.2f}"
+                        business_impact = f"Medium impact: ${annual_savings:.2f} annual savings potential"
+                        example = f"Example: Current price range ${row['min_price']:.2f} - ${row['max_price']:.2f} suggests room for negotiation"
+                    else:
+                        insight_type = "📊 Price Variability Detected - Review Strategy"
+                        recommendation = f"Review pricing strategy for this product. Consider bulk ordering for better rates."
+                        business_impact = f"Low impact: ${annual_savings:.2f} annual savings potential"
+                        example = f"Example: Price varies by ${row['price_range']:.2f} across vendors - opportunity for bulk discounts"
+                    
+                    insights.append({
+                        'product': row['description'],
+                        'category': row['category'],
+                        'vendor_count': row['vendor_count'],
+                        'avg_price': row['avg_price'],
+                        'price_range': row['price_range'],
+                        'variability_pct': row['price_variability_pct'],
+                        'vendor_prices': row['vendor_prices'],
+                        'insight_type': insight_type,
+                        'recommendation': recommendation,
+                        'business_impact': business_impact,
+                        'example': example,
+                        'annual_savings_potential': annual_savings
+                    })
+                
+                return pd.DataFrame(insights)
+            
+            return pd.DataFrame()
+        except Exception as e:
+            st.error(f"Error getting product price variability insights: {e}")
+            return pd.DataFrame()
+
+    def get_vendor_switching_recommendations(self):
+        """Get recommendations for vendor switching based on price analysis."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            query = """
+            SELECT 
+                l.description,
+                l.category,
+                i.vendor,
+                l.unit_price,
+                l.total_price,
+                COUNT(*) as purchase_count,
+                AVG(l.unit_price) OVER (PARTITION BY l.description) as avg_market_price,
+                (l.unit_price - AVG(l.unit_price) OVER (PARTITION BY l.description)) / AVG(l.unit_price) OVER (PARTITION BY l.description) * 100 as price_premium_pct
+            FROM line_items l
+            JOIN invoices i ON l.filename = i.filename
+            WHERE l.description IS NOT NULL AND l.description != '' 
+                AND l.unit_price > 0
+                AND i.vendor IS NOT NULL AND i.vendor != ''
+            ORDER BY l.description, price_premium_pct DESC
+            """
+            
+            df = pd.read_sql_query(query, self.conn)
+            
+            if not df.empty:
+                # Find products where current vendor has high price premium
+                high_premium = df[df['price_premium_pct'] > 15].copy()
+                
+                if not high_premium.empty:
+                    # Get alternative vendors for each product
+                    recommendations = []
+                    for _, row in high_premium.iterrows():
+                        alternatives = df[
+                            (df['description'] == row['description']) & 
+                            (df['vendor'] != row['vendor'])
+                        ]
+                        
+                        if not alternatives.empty:
+                            best_alternative = alternatives.loc[alternatives['unit_price'].idxmin()]
+                            potential_savings = (row['unit_price'] - best_alternative['unit_price']) * row['purchase_count']
+                            
+                            # Calculate annual impact
+                            monthly_frequency = row['purchase_count'] / 3  # Assuming 3 months of data
+                            annual_savings = potential_savings * 4 * 12  # Extrapolate to annual
+                            
+                            # Create detailed recommendation with examples
+                            if row['price_premium_pct'] > 30:
+                                priority = "🚨 High Priority - Immediate Action"
+                                impact_level = "High Impact"
+                                action_required = "Switch vendors immediately or negotiate aggressively"
+                            elif row['price_premium_pct'] > 20:
+                                priority = "⚠️ Medium Priority - Plan Switch"
+                                impact_level = "Medium Impact"
+                                action_required = "Plan vendor switch within 30 days"
+                            else:
+                                priority = "📊 Low Priority - Monitor"
+                                impact_level = "Low Impact"
+                                action_required = "Monitor pricing and consider switch"
+                            
+                            # Restaurant-specific examples
+                            if "coffee" in row['description'].lower() or "bean" in row['description'].lower():
+                                example = f"Example: You're paying ${row['unit_price']:.2f} for {row['description']} from {row['vendor']}, but {best_alternative['vendor']} offers it for ${best_alternative['unit_price']:.2f}. For a coffee shop using 50 lbs/month, this saves ${(row['unit_price'] - best_alternative['unit_price']) * 50:.2f} monthly = ${annual_savings:.2f} annually"
+                            elif "produce" in row['description'].lower() or "vegetable" in row['description'].lower():
+                                example = f"Example: {row['description']} costs ${row['unit_price']:.2f} from {row['vendor']} vs ${best_alternative['unit_price']:.2f} from {best_alternative['vendor']}. For a restaurant using 20 units/week, switching saves ${(row['unit_price'] - best_alternative['unit_price']) * 20 * 52:.2f} annually"
+                            elif "linen" in row['description'].lower() or "napkin" in row['description'].lower():
+                                example = f"Example: Linen service from {row['vendor']} costs ${row['unit_price']:.2f} vs ${best_alternative['unit_price']:.2f} from {best_alternative['vendor']}. For weekly service, switching saves ${(row['unit_price'] - best_alternative['unit_price']) * 52:.2f} annually"
+                            else:
+                                example = f"Example: {row['description']} from {row['vendor']} costs ${row['unit_price']:.2f} vs ${best_alternative['unit_price']:.2f} from {best_alternative['vendor']}. Switching saves ${(row['unit_price'] - best_alternative['unit_price']) * row['purchase_count']:.2f} per order"
+                            
+                            recommendations.append({
+                                'product': row['description'],
+                                'category': row['category'],
+                                'current_vendor': row['vendor'],
+                                'current_price': row['unit_price'],
+                                'alternative_vendor': best_alternative['vendor'],
+                                'alternative_price': best_alternative['unit_price'],
+                                'price_premium_pct': row['price_premium_pct'],
+                                'potential_savings': potential_savings,
+                                'annual_savings': annual_savings,
+                                'priority': priority,
+                                'impact_level': impact_level,
+                                'action_required': action_required,
+                                'example': example,
+                                'recommendation': f"Switch from {row['vendor']} to {best_alternative['vendor']} for {row['description']}"
+                            })
+                    
+                    return pd.DataFrame(recommendations)
+            
+            return pd.DataFrame()
+        except Exception as e:
+            st.error(f"Error getting vendor switching recommendations: {e}")
+            return pd.DataFrame()
+
+    def get_strategic_cost_optimization_insights(self):
+        """Get comprehensive strategic cost optimization insights."""
+        try:
+            if not self.conn:
+                return pd.DataFrame()
+            
+            insights = []
+            
+            # 1. High spending vendors with optimization potential
+            vendor_summary = pd.read_sql_query("""
+                SELECT vendor, SUM(total_amount) as total_spending, COUNT(*) as invoice_count
+                FROM invoices 
+                WHERE vendor IS NOT NULL AND vendor != ''
+                GROUP BY vendor
+                ORDER BY total_spending DESC
+            """, self.conn)
+            
+            if not vendor_summary.empty:
+                total_spending = vendor_summary['total_spending'].sum()
+                
+                # High concentration risk
+                top_vendor = vendor_summary.iloc[0]
+                if top_vendor['total_spending'] / total_spending > 0.4:
+                    concentration_risk = top_vendor['total_spending'] / total_spending * 100
+                    risk_example = f"Example: {top_vendor['vendor']} represents {concentration_risk:.1f}% of your total spending (${top_vendor['total_spending']:,.0f} out of ${total_spending:,.0f}). If they raise prices by 10%, your costs increase by ${top_vendor['total_spending'] * 0.1:,.0f} annually. Diversifying reduces this risk."
+                    
+                    insights.append({
+                        'insight_type': '🚨 High Vendor Concentration Risk',
+                        'vendor': top_vendor['vendor'],
+                        'metric': f"{concentration_risk:.1f}% of total spending (${top_vendor['total_spending']:,.0f})",
+                        'recommendation': 'Diversify suppliers to reduce dependency and improve negotiation power',
+                        'potential_impact': 'High',
+                        'business_example': risk_example,
+                        'action_items': [
+                            'Identify 2-3 alternative vendors for key products',
+                            'Start with 20-30% of business to test new suppliers',
+                            'Negotiate better terms with current vendor using competition'
+                        ]
+                    })
+                
+                # High spending vendors for negotiation
+                high_spending_vendors = vendor_summary[vendor_summary['total_spending'] > 5000]
+                for _, vendor in high_spending_vendors.iterrows():
+                    # Calculate negotiation leverage potential
+                    # Use .iloc to access by position to avoid column name issues
+                    vendor_name = vendor.iloc[0] if hasattr(vendor, 'iloc') else vendor['vendor']
+                    total_spending = vendor.iloc[1] if hasattr(vendor, 'iloc') else vendor['total_spending']
+                    invoice_count = vendor.iloc[2] if hasattr(vendor, 'iloc') else vendor.get('invoice_count', 1)
+                    
+                    if invoice_count > 0:
+                        avg_invoice = total_spending / invoice_count
+                    else:
+                        avg_invoice = total_spending  # Fallback if no invoice count
+                    
+                    monthly_spending = total_spending / 12  # Assuming 12 months of data
+                    
+                    if total_spending > 15000:
+                        leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly from your business. You can negotiate: 1) 5-10% bulk discount, 2) Net 30 payment terms (vs Net 15), 3) Free delivery, 4) Priority service. Potential savings: ${total_spending * 0.08:,.0f} annually"
+                        action_items = [
+                            'Request bulk pricing tiers for monthly spending levels',
+                            'Negotiate extended payment terms (Net 30-45)',
+                            'Ask for free delivery and priority service',
+                            'Request quarterly business reviews for pricing optimization'
+                        ]
+                    else:
+                        leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly. You can negotiate: 1) 3-5% volume discount, 2) Better payment terms, 3) Consistent delivery scheduling. Potential savings: ${total_spending * 0.05:,.0f} annually"
+                        action_items = [
+                            'Request volume discounts for consistent ordering',
+                            'Negotiate better payment terms',
+                            'Establish regular delivery schedule',
+                            'Ask for loyalty program benefits'
+                        ]
+                    
+                    insights.append({
+                        'insight_type': '💰 High Spending Vendor - Negotiation Opportunity',
+                        'vendor': vendor_name,
+                        'metric': f"${total_spending:,.0f} total spending, ${avg_invoice:.0f} avg invoice",
+                        'recommendation': 'Leverage high spending for better rates, bulk discounts, or payment terms',
+                        'potential_impact': 'Medium',
+                        'business_example': leverage_example,
+                        'action_items': action_items
+                    })
+            
+            # 2. Product category optimization opportunities
+            category_analysis = pd.read_sql_query("""
+                SELECT 
+                    l.category,
+                    COUNT(DISTINCT i.vendor) as vendor_count,
+                    AVG(l.unit_price) as avg_price,
+                    SUM(l.total_price) as total_spending
+                FROM line_items l
+                JOIN invoices i ON l.filename = i.filename
+                WHERE l.category IS NOT NULL AND l.category != ''
+                GROUP BY l.category
+                HAVING vendor_count > 1
+                ORDER BY total_spending DESC
+            """, self.conn)
+            
+            if not category_analysis.empty:
+                for _, category in category_analysis.iterrows():
+                    if category['vendor_count'] >= 3:
+                        # Calculate consolidation savings potential
+                        avg_price = category['avg_price']
+                        consolidation_savings = category['total_spending'] * 0.05  # 5% savings from consolidation
+                        
+                        if "coffee" in category['category'].lower():
+                            category_example = f"Example: You're buying coffee from {category['vendor_count']} different vendors, spending ${category['total_spending']:,.0f} annually. Consolidating to 1-2 vendors could save ${consolidation_savings:,.0f} through: 1) Bulk pricing, 2) Consistent quality, 3) Better delivery scheduling, 4) Reduced admin costs"
+                        elif "produce" in category['category'].lower():
+                            category_example = f"Example: Fresh produce from {category['vendor_count']} vendors costs ${category['total_spending']:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume discounts, 2) Consistent quality standards, 3) Coordinated delivery schedules, 4) Better relationship management"
+                        elif "linen" in category['category'].lower():
+                            category_example = f"Example: Linen services from {category['vendor_count']} vendors cost ${category['total_spending']:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume pricing, 2) Consistent service quality, 3) Simplified billing, 4) Better inventory management"
+                        else:
+                            category_example = f"Example: {category['category']} from {category['vendor_count']} vendors costs ${category['total_spending']:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through better pricing and service coordination"
+                        
+                        insights.append({
+                            'insight_type': '🔄 Multi-Vendor Category - Consolidation Opportunity',
+                            'vendor': f"Category: {category['category']}",
+                            'metric': f"{category['vendor_count']} vendors, ${category['total_spending']:,.0f} spending",
+                            'recommendation': 'Consolidate to 1-2 strategic vendors for better pricing and service',
+                            'potential_impact': 'Medium',
+                            'business_example': category_example,
+                            'action_items': [
+                                'Evaluate vendor performance and pricing across all suppliers',
+                                'Select top 2 vendors based on quality, price, and service',
+                                'Negotiate volume discounts with selected vendors',
+                                'Plan gradual transition over 2-3 months'
+                            ]
+                        })
+            
+            # 3. Seasonal and timing optimization opportunities
+            seasonal_insights = pd.read_sql_query("""
+                SELECT 
+                    strftime('%m', date) as month,
+                    SUM(total_amount) as monthly_spending,
+                    COUNT(*) as invoice_count
+                FROM invoices 
+                WHERE date IS NOT NULL AND date != ''
+                GROUP BY strftime('%m', date)
+                ORDER BY monthly_spending DESC
+                LIMIT 3
+            """, self.conn)
+            
+            if not seasonal_insights.empty:
+                peak_month = seasonal_insights.iloc[0]
+                peak_month_name = {
+                    '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+                    '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+                    '09': 'September', '10': 'October', '11': 'November', '12': 'December'
+                }.get(peak_month['month'], peak_month['month'])
+                
+                seasonal_example = f"Example: {peak_month_name} is your highest spending month (${peak_month['monthly_spending']:,.0f}). Consider: 1) Pre-ordering supplies in slower months for better pricing, 2) Negotiating annual contracts to smooth out seasonal spikes, 3) Building inventory during low-demand periods"
+                
+                insights.append({
+                    'insight_type': '📅 Seasonal Spending Pattern - Inventory Optimization',
+                    'vendor': f"Peak Month: {peak_month_name}",
+                    'metric': f"${peak_month['monthly_spending']:,.0f} spending in peak month",
+                    'recommendation': 'Optimize inventory planning and negotiate annual contracts to reduce seasonal cost spikes',
+                    'potential_impact': 'Medium',
+                    'business_example': seasonal_example,
+                    'action_items': [
+                        'Analyze 12-month spending patterns to identify trends',
+                        'Negotiate annual contracts with key vendors',
+                        'Implement inventory planning for seasonal variations',
+                        'Consider bulk purchasing during low-demand periods'
+                    ]
+                })
+            
+            return pd.DataFrame(insights)
+        except Exception as e:
+            st.error(f"Error getting strategic cost optimization insights: {e}")
+            return pd.DataFrame()
+
 def show_combined_analysis(dashboard):
     """Show combined analysis across all vendors."""
     st.subheader("🏪 Restaurant Supply Chain Overview")
@@ -613,7 +956,42 @@ def show_combined_analysis(dashboard):
             summary_df['percentage'] = (summary_df['total_spending'] / total_spending * 100).round(1)
             st.dataframe(summary_df, use_container_width=True)
         
-        # 2. Risk Analysis (High Concentration Risk)
+        # 2. Quick Strategic Insights (High Priority)
+        st.subheader("🎯 Quick Strategic Insights - Immediate Action Items")
+        
+        # Get key insights for quick display
+        price_variability = dashboard.get_product_price_variability_insights()
+        switching_recs = dashboard.get_vendor_switching_recommendations()
+        strategic_insights = dashboard.get_strategic_cost_optimization_insights()
+        
+        # Display high-priority insights immediately
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if not price_variability.empty:
+                high_var_count = len(price_variability[price_variability['variability_pct'] > 50])
+                if high_var_count > 0:
+                    st.error(f"🚨 **{high_var_count} High Price Variability Products**")
+                    st.write("Products with >50% price difference across vendors")
+                    st.write("**Action**: Review pricing strategy immediately")
+                else:
+                    st.success("✅ **Price Variability Under Control**")
+            else:
+                st.info("📊 **Price Variability**: No data available")
+        
+        with col2:
+            if not switching_recs.empty:
+                total_savings = switching_recs['potential_savings'].sum()
+                if total_savings > 500:
+                    st.error(f"💰 **${total_savings:,.0f} Potential Savings**")
+                    st.write("From vendor switching opportunities")
+                    st.write("**Action**: Review vendor switching recommendations")
+                else:
+                    st.success("✅ **Vendor Optimization**: Good pricing across vendors")
+            else:
+                st.info("🔄 **Vendor Switching**: No recommendations available")
+        
+        # 3. Risk Analysis (High Concentration Risk)
         st.subheader("🚨 Supply Chain Risk Assessment")
         if not summary_df.empty:
             top_vendor = summary_df.iloc[0]
@@ -624,7 +1002,7 @@ def show_combined_analysis(dashboard):
             else:
                 st.success("✅ **Good Vendor Diversity**: No single vendor represents more than 40% of spending")
         
-        # 3. Optimization Opportunities
+        # 4. Optimization Opportunities
         st.subheader("💰 Restaurant Cost Optimization Opportunities")
         high_spending = summary_df[summary_df['total_spending'] > 1000]
         if not high_spending.empty:
@@ -661,96 +1039,252 @@ def show_combined_analysis(dashboard):
             st.write("• Strategic sourcing: 20-30% = **$9,600 - $14,400**")
             st.write("**Total**: **$21,600 - $33,600 annually**")
         
-        # 6. Comprehensive Time-Based Analysis
-        st.subheader("🕒 Time-Based Spending Analysis & Trends")
-        st.markdown("**Restaurant spending patterns, seasonal trends, and optimization opportunities**")
+        # 6. Strategic Business Insights & Recommendations
+        st.subheader("🎯 Strategic Business Insights & Cost Optimization")
+        st.markdown("**Actionable insights for vendor optimization, price variability, and strategic recommendations**")
         
-        # Time-based analysis tabs
-        time_tab1, time_tab2, time_tab3, time_tab4 = st.tabs([
-            "📅 Monthly Trends", 
-            "🌤️ Seasonal Patterns", 
-            "📊 Weekly Patterns", 
-            "💡 Time-Based Insights"
+        # Strategic insights tabs
+        insights_tab1, insights_tab2, insights_tab3, insights_tab4 = st.tabs([
+            "🚨 Price Variability", 
+            "🔄 Vendor Switching", 
+            "💰 Strategic Insights", 
+            "📊 Time Analysis"
         ])
         
-        with time_tab1:
-            st.markdown("### 📅 Monthly Spending Trends Across All Vendors")
-            monthly_data = dashboard.get_all_vendors_monthly_trends()
-            if not monthly_data.empty:
-                # Monthly spending line chart
-                fig_monthly = px.line(monthly_data, x='month', y='total_spending', color='vendor',
-                                    title="Monthly Spending Trends by Vendor",
-                                    labels={'total_spending': 'Total Spending ($)', 'month': 'Month'})
-                fig_monthly.update_layout(height=500)
-                st.plotly_chart(fig_monthly, use_container_width=True)
+        with insights_tab1:
+            st.markdown("### 🚨 Products with High Price Variability")
+            price_variability = dashboard.get_product_price_variability_insights()
+            if not price_variability.empty:
+                # High priority insights
+                high_variability = price_variability[price_variability['variability_pct'] > 50]
+                if not high_variability.empty:
+                    st.warning("**🚨 High Priority - Immediate Action Required**")
+                    for _, insight in high_variability.iterrows():
+                        st.markdown(f"""
+                        <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 1rem; margin: 0.5rem 0;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: #856404;">{insight['insight_type']}</h4>
+                            <p><strong>Product:</strong> {insight['product']}</p>
+                            <p><strong>Category:</strong> {insight['category']}</p>
+                            <p><strong>Price Variability:</strong> {insight['variability_pct']:.1f}%</p>
+                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
-                # Monthly spending heatmap
-                monthly_pivot = monthly_data.pivot(index='month_name', columns='vendor', values='total_spending').fillna(0)
-                fig_heatmap = px.imshow(monthly_pivot, 
-                                      title="Monthly Spending Heatmap by Vendor",
-                                      labels=dict(x="Vendor", y="Month", color="Spending ($)"))
-                st.plotly_chart(fig_heatmap, use_container_width=True)
+                # Show detailed insights with examples
+                st.write("**🚨 High Priority Products (Immediate Action Required):**")
+                high_priority = price_variability[price_variability['variability_pct'] > 50]
+                if not high_priority.empty:
+                    for _, insight in high_priority.iterrows():
+                        st.markdown(f"""
+                        <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px; padding: 1.5rem; margin: 1rem 0;">
+                            <h4 style="margin: 0 0 1rem 0; color: #721c24;">{insight['insight_type']}</h4>
+                            <p><strong>Product:</strong> {insight['product']}</p>
+                            <p><strong>Category:</strong> {insight['category']}</p>
+                            <p><strong>Price Variability:</strong> {insight['variability_pct']:.1f}%</p>
+                            <p><strong>Vendor Prices:</strong> {insight['vendor_prices']}</p>
+                            <p><strong>Business Impact:</strong> {insight['business_impact']}</p>
+                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
+                            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+                                <strong>💡 Restaurant Example:</strong><br>
+                                {insight['example']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
-                st.write("**Monthly Spending Summary:**")
-                st.dataframe(monthly_data.groupby('month_name')['total_spending'].sum().reset_index(), use_container_width=True)
-            else:
-                st.info("No monthly trend data available")
-        
-        with time_tab2:
-            st.markdown("### 🌤️ Seasonal Spending Patterns")
-            seasonal_data = dashboard.get_all_vendors_seasonal_analysis()
-            if not seasonal_data.empty:
-                # Seasonal spending by vendor
-                fig_seasonal = px.bar(seasonal_data, x='season', y='total_spending', color='vendor',
-                                    title="Seasonal Spending Patterns by Vendor",
-                                    labels={'total_spending': 'Total Spending ($)', 'season': 'Season'})
-                fig_seasonal.update_layout(height=500)
-                st.plotly_chart(fig_seasonal, use_container_width=True)
+                # Show all insights in a comprehensive table
+                st.write("**📊 All Price Variability Insights:**")
+                display_df = price_variability[['product', 'category', 'vendor_count', 'variability_pct', 'annual_savings_potential', 'insight_type']].copy()
+                display_df['variability_pct'] = display_df['variability_pct'].round(1)
+                display_df['annual_savings_potential'] = display_df['annual_savings_potential'].round(2)
+                st.dataframe(display_df, use_container_width=True)
                 
-                # Seasonal summary
-                seasonal_summary = seasonal_data.groupby('season').agg({
-                    'total_spending': 'sum',
-                    'invoice_count': 'sum'
-                }).reset_index()
-                seasonal_summary['avg_spending'] = seasonal_summary['total_spending'] / seasonal_summary['invoice_count']
-                
-                col1, col2 = st.columns(2)
+                # Summary metrics
+                col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.write("**Seasonal Spending Summary:**")
-                    st.dataframe(seasonal_summary, use_container_width=True)
+                    st.metric("High Variability Products", len(price_variability[price_variability['variability_pct'] > 50]))
                 with col2:
-                    st.write("**Seasonal Insights:**")
-                    peak_season = seasonal_summary.loc[seasonal_summary['total_spending'].idxmax()]
-                    st.success(f"**Peak Season**: {peak_season['season']} - ${peak_season['total_spending']:,.0f}")
-                    st.info(f"**Average Invoice**: ${seasonal_summary['avg_spending'].mean():,.0f}")
+                    st.metric("Moderate Variability", len(price_variability[(price_variability['variability_pct'] > 30) & (price_variability['variability_pct'] <= 50)]))
+                with col3:
+                    st.metric("Total Products Analyzed", len(price_variability))
             else:
-                st.info("No seasonal data available")
+                st.info("No significant price variability detected across vendors")
         
-        with time_tab3:
-            st.markdown("### 📊 Weekly Spending Patterns")
-            weekly_data = dashboard.get_all_vendors_weekly_patterns()
-            if not weekly_data.empty:
-                # Weekly spending trends
-                fig_weekly = px.line(weekly_data, x='week_label', y='total_spending', color='vendor',
-                                   title="Weekly Spending Patterns by Vendor",
-                                   labels={'total_spending': 'Total Spending ($)', 'week_label': 'Week'})
-                fig_weekly.update_layout(height=500)
-                st.plotly_chart(fig_weekly, use_container_width=True)
+        with insights_tab2:
+            st.markdown("### 🔄 Vendor Switching Recommendations")
+            switching_recs = dashboard.get_vendor_switching_recommendations()
+            if not switching_recs.empty:
+                # High savings opportunities
+                high_savings = switching_recs[switching_recs['potential_savings'] > 100]
+                if not high_savings.empty:
+                    st.success("**💰 High Savings Opportunities**")
+                    for _, rec in high_savings.iterrows():
+                        st.markdown(f"""
+                        <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 10px; padding: 1rem; margin: 0.5rem 0;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: #155724;">🔄 Vendor Switch Recommendation</h4>
+                            <p><strong>Product:</strong> {rec['product']}</p>
+                            <p><strong>Current Vendor:</strong> {rec['current_vendor']} (${rec['current_price']:.2f})</p>
+                            <p><strong>Alternative:</strong> {rec['alternative_vendor']} (${rec['alternative_price']:.2f})</p>
+                            <p><strong>Potential Savings:</strong> ${rec['potential_savings']:.2f}</p>
+                            <p><strong>Price Premium:</strong> {rec['price_premium_pct']:.1f}%</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
-                # Weekly summary statistics
-                weekly_summary = weekly_data.groupby('vendor').agg({
-                    'total_spending': ['mean', 'std', 'min', 'max']
-                }).round(2)
-                weekly_summary.columns = ['Avg Weekly Spending', 'Std Dev', 'Min Weekly', 'Max Weekly']
-                weekly_summary = weekly_summary.reset_index()
+                # Show detailed recommendations with examples
+                st.write("**💰 High Savings Opportunities (Immediate Action):**")
+                high_savings = switching_recs[switching_recs['annual_savings'] > 500]
+                if not high_savings.empty:
+                    for _, rec in high_savings.iterrows():
+                        st.markdown(f"""
+                        <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 10px; padding: 1.5rem; margin: 1rem 0;">
+                            <h4 style="margin: 0 0 1rem 0; color: #155724;">🔄 {rec['priority']}</h4>
+                            <p><strong>Product:</strong> {rec['product']}</p>
+                            <p><strong>Category:</strong> {rec['category']}</p>
+                            <p><strong>Current Vendor:</strong> {rec['current_vendor']} (${rec['current_price']:.2f})</p>
+                            <p><strong>Alternative:</strong> {rec['alternative_vendor']} (${rec['alternative_price']:.2f})</p>
+                            <p><strong>Price Premium:</strong> {rec['price_premium_pct']:.1f}%</p>
+                            <p><strong>Annual Savings:</strong> ${rec['annual_savings']:.2f}</p>
+                            <p><strong>Action Required:</strong> {rec['action_required']}</p>
+                            <div style="background: #e8f5e8; border: 1px solid #d4edda; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+                                <strong>💡 Restaurant Example:</strong><br>
+                                {rec['example']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
-                st.write("**Weekly Spending Statistics by Vendor:**")
-                st.dataframe(weekly_summary, use_container_width=True)
+                # Show all recommendations in a comprehensive table
+                st.write("**📊 All Vendor Switching Recommendations:**")
+                display_df = switching_recs[['product', 'category', 'current_vendor', 'alternative_vendor', 'annual_savings', 'price_premium_pct', 'priority']].copy()
+                display_df['annual_savings'] = display_df['annual_savings'].round(2)
+                display_df['price_premium_pct'] = display_df['price_premium_pct'].round(1)
+                st.dataframe(display_df, use_container_width=True)
+                
+                # Total potential savings
+                total_savings = switching_recs['potential_savings'].sum()
+                st.success(f"**Total Potential Savings from Vendor Switching: ${total_savings:,.2f}**")
             else:
-                st.info("No weekly pattern data available")
+                st.info("No vendor switching recommendations available")
         
-        with time_tab4:
-            st.markdown("### 💡 Time-Based Optimization Insights")
+        with insights_tab3:
+            st.markdown("### 💰 Strategic Cost Optimization Insights")
+            strategic_insights = dashboard.get_strategic_cost_optimization_insights()
+            if not strategic_insights.empty:
+                # Summary metrics for quick overview
+                st.markdown("**📊 Quick Impact Summary**")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                high_impact_count = len(strategic_insights[strategic_insights['potential_impact'] == 'High'])
+                medium_impact_count = len(strategic_insights[strategic_insights['potential_impact'] == 'Medium'])
+                
+                with col1:
+                    st.metric("High Impact Items", high_impact_count, help="Requires immediate attention")
+                with col2:
+                    st.metric("Medium Impact Items", medium_impact_count, help="Plan for optimization")
+                with col3:
+                    st.metric("Total Insights", len(strategic_insights), help="All optimization opportunities")
+                with col4:
+                    # Calculate estimated annual savings potential
+                    if not strategic_insights.empty and 'potential_impact' in strategic_insights.columns:
+                        high_impact_count = len(strategic_insights[strategic_insights['potential_impact'] == 'High'])
+                        if high_impact_count > 0:
+                            st.metric("Estimated Impact", "High", help=f"{high_impact_count} high impact items require immediate attention")
+                        else:
+                            st.metric("Estimated Impact", "Medium", help="Medium impact optimization opportunities available")
+                    else:
+                        st.metric("Estimated Impact", "Medium", help="Based on vendor concentration and spending patterns")
+                
+                st.markdown("---")
+                # High impact insights
+                high_impact = strategic_insights[strategic_insights['potential_impact'] == 'High']
+                if not high_impact.empty:
+                    st.error("**🚨 High Impact - Immediate Attention Required**")
+                    for _, insight in high_impact.iterrows():
+                        st.markdown(f"""
+                        <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px; padding: 1rem; margin: 0.5rem 0;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: #721c24;">{insight['insight_type']}</h4>
+                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
+                            <p><strong>Metric:</strong> {insight['metric']}</p>
+                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Medium impact insights
+                medium_impact = strategic_insights[strategic_insights['potential_impact'] == 'Medium']
+                if not medium_impact.empty:
+                    st.warning("**⚠️ Medium Impact - Plan for Optimization**")
+                    for _, insight in medium_impact.iterrows():
+                        st.markdown(f"""
+                        <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 1rem; margin: 0.5rem 0;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: #856404;">{insight['insight_type']}</h4>
+                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
+                            <p><strong>Metric:</strong> {insight['metric']}</p>
+                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Show detailed strategic insights with examples
+                st.write("**🚨 High Impact Insights (Immediate Attention Required):**")
+                high_impact = strategic_insights[strategic_insights['potential_impact'] == 'High']
+                if not high_impact.empty:
+                    for _, insight in high_impact.iterrows():
+                        # Safety check for optional columns
+                        business_example = insight.get('business_example', 'No business example available')
+                        action_items = insight.get('action_items', ['No specific action items available'])
+                        
+                        st.markdown(f"""
+                        <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px; padding: 1.5rem; margin: 1rem 0;">
+                            <h4 style="margin: 0 0 1rem 0; color: #721c24;">{insight['insight_type']}</h4>
+                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
+                            <p><strong>Metric:</strong> {insight['metric']}</p>
+                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
+                            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+                                <strong>💡 Business Example:</strong><br>
+                                {business_example}
+                            </div>
+                            <div style="background: #e8f5e8; border: 1px solid #d4edda; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+                                <strong>📋 Action Items:</strong><br>
+                                {chr(10).join([f"• {item}" for item in action_items])}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Medium impact insights
+                medium_impact = strategic_insights[strategic_insights['potential_impact'] == 'Medium']
+                if not medium_impact.empty:
+                    st.write("**⚠️ Medium Impact Insights (Plan for Optimization):**")
+                    for _, insight in medium_impact.iterrows():
+                        # Safety check for optional columns
+                        business_example = insight.get('business_example', 'No business example available')
+                        action_items = insight.get('action_items', ['No specific action items available'])
+                        
+                        st.markdown(f"""
+                        <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 1.5rem; margin: 1rem 0;">
+                            <h4 style="margin: 0 0 1rem 0; color: #856404;">{insight['insight_type']}</h4>
+                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
+                            <p><strong>Metric:</strong> {insight['metric']}</p>
+                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
+                            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+                                <strong>💡 Business Example:</strong><br>
+                                {business_example}
+                            </div>
+                            <div style="background: #e8f5e8; border: 1px solid #d4edda; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+                                <strong>📋 Action Items:</strong><br>
+                                {chr(10).join([f"• {item}" for item in action_items])}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Summary table
+                st.write("**📊 All Strategic Insights Summary:**")
+                summary_df = strategic_insights[['insight_type', 'vendor', 'metric', 'potential_impact']].copy()
+                st.dataframe(summary_df, use_container_width=True)
+            else:
+                st.info("No strategic insights available")
+        
+        with insights_tab4:
+            st.markdown("### 📊 Time-Based Spending Analysis & Trends")
+            st.markdown("**Restaurant spending patterns, seasonal trends, and optimization opportunities**")
+            
+            # Time-based analysis content
             time_insights = dashboard.get_time_based_optimization_insights()
             if not time_insights.empty:
                 st.write("**Key Time-Based Insights:**")
@@ -768,6 +1302,9 @@ def show_combined_analysis(dashboard):
                 st.write("• **Cash Flow Management**: Plan for seasonal spending variations")
             else:
                 st.info("No time-based insights available")
+        
+        # Time-based analysis is now integrated into the Strategic Insights tab above
+        st.info("💡 **Time-based analysis has been integrated into the Strategic Insights section above for better organization and actionable insights.**")
         
         # Download combined report
         st.subheader("📥 Download Restaurant Supply Chain Report")
