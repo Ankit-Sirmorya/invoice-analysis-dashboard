@@ -910,18 +910,41 @@ def main():
     .vendor-header {
         background: linear-gradient(135deg, #8B0000 0%, #DC143C 100%);
         color: white;
-        padding: 2rem;
-        border-radius: 15px;
+        padding: 3rem 2rem;
+        border-radius: 20px;
         text-align: center;
         margin: 2rem 0;
-        box-shadow: 0 8px 25px rgba(139, 0, 0, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2);
-        border: 2px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 12px 35px rgba(139, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.3);
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        position: relative;
+        overflow: hidden;
+    }
+    .vendor-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%, rgba(255, 255, 255, 0.1) 100%);
+        pointer-events: none;
     }
     .vendor-header h2 {
         margin: 0;
-        font-size: 2.5rem;
-        font-weight: 700;
+        font-size: 2.8rem;
+        font-weight: 800;
         font-family: 'Georgia', serif;
+        color: #ffffff;
+        text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.7), 1px 1px 2px rgba(0, 0, 0, 0.5);
+        position: relative;
+        z-index: 2;
+    }
+    .vendor-header p {
+        color: #ffffff;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
+        position: relative;
+        z-index: 2;
+        font-weight: 500;
     }
     .business-summary {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #e9ecef 100%);
@@ -1036,6 +1059,29 @@ def main():
         .main-header .dashboard-subtitle {
             font-size: 1.1rem;
         }
+        .vendor-header h2 {
+            font-size: 2.2rem;
+        }
+        .vendor-header p {
+            font-size: 1.1rem;
+        }
+    }
+    
+    /* Enhanced vendor header readability */
+    .vendor-header h2, .vendor-header p {
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Ensure vendor name stands out */
+    .vendor-header h2 {
+        background: linear-gradient(45deg, #ffffff, #f0f0f0);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        filter: drop-shadow(3px 3px 6px rgba(0, 0, 0, 0.8));
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1145,11 +1191,11 @@ def show_vendor_analysis(dashboard, vendor_name):
         
         st.markdown("---")
         
-        # Enhanced vendor header for restaurant operations
+        # Enhanced vendor header for restaurant operations with better readability
         st.markdown(f"""
         <div class="vendor-header">
-            <h2>🏢 {vendor_name}</h2>
-            <p style="margin: 0.5rem 0 0 0; font-size: 1.1rem; opacity: 0.9;">Supply Chain Partner Analysis & Cost Optimization</p>
+            <h2 style="color: #ffffff; text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.7), 1px 1px 2px rgba(0, 0, 0, 0.5); font-size: 2.8rem; font-weight: 800; margin: 0;">🏢 {vendor_name}</h2>
+            <p style="margin: 1rem 0 0 0; font-size: 1.3rem; color: #ffffff; opacity: 1; font-weight: 500; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);">Supply Chain Partner Analysis & Cost Optimization</p>
         </div>
         """, unsafe_allow_html=True)
         
