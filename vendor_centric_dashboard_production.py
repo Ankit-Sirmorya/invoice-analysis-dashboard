@@ -740,187 +740,311 @@ class VendorCentricDashboard:
             return pd.DataFrame()
 
     def get_strategic_cost_optimization_insights(self):
-        """Get comprehensive strategic cost optimization insights."""
+        """Get comprehensive strategic cost optimization insights based on actual line items data."""
         try:
             if not self.conn:
                 return pd.DataFrame()
             
             insights = []
             
-            # 1. High spending vendors with optimization potential - Simplified approach
+            # 1. Top Spending Products - Most Expensive Line Items
             try:
-                vendor_summary = pd.read_sql_query("""
-                    SELECT vendor, SUM(total_amount) as total_spending, COUNT(*) as invoice_count
-                    FROM invoices 
-                    WHERE vendor IS NOT NULL AND vendor != ''
-                    GROUP BY vendor
-                    ORDER BY total_spending DESC
+                top_spending_products = pd.read_sql_query("""
+                    SELECT 
+                        l.description,
+                        l.category,
+                        i.vendor,
+                        l.unit_price,
+                        l.quantity,
+                        l.total_price,
+                        COUNT(*) as order_frequency
+                    FROM line_items l
+                    JOIN invoices i ON l.filename = i.filename
+                    WHERE l.description IS NOT NULL AND l.description != ''
+                        AND l.total_price > 0
+                    GROUP BY l.description, l.category, i.vendor, l.unit_price, l.quantity, l.total_price
+                    ORDER BY l.total_price DESC
+                    LIMIT 10
                 """, self.conn)
                 
-                if not vendor_summary.empty:
-                    total_spending = vendor_summary['total_spending'].sum()
+                if not top_spending_products.empty:
+                    # Group by product to find total spending across all vendors
+                    product_totals = top_spending_products.groupby('description').agg({
+                        'total_price': 'sum',
+                        'order_frequency': 'sum',
+                        'vendor': lambda x: list(set(x)),
+                        'unit_price': 'mean'
+                    }).reset_index()
                     
-                    # High concentration risk
-                    top_vendor_row = vendor_summary.iloc[0]
-                    top_vendor_name = str(top_vendor_row['vendor'])
-                    top_vendor_spending = float(top_vendor_row['total_spending'])
+                    # Find products with highest total spending
+                    top_products = product_totals.nlargest(5, 'total_price')
                     
-                    if top_vendor_spending / total_spending > 0.4:
-                        concentration_risk = (top_vendor_spending / total_spending) * 100
-                        risk_example = f"Example: {top_vendor_name} represents {concentration_risk:.1f}% of your total spending (${top_vendor_spending:,.0f} out of ${total_spending:,.0f}). If they raise prices by 10%, your costs increase by ${top_vendor_spending * 0.1:,.0f} annually. Diversifying reduces this risk."
+                    for _, product in top_products.iterrows():
+                        product_name = str(product['description'])
+                        total_spending = float(product['total_price'])  # Fixed: was 'total_spending', should be 'total_price'
+                        frequency = int(product['order_frequency'])
+                        vendors = product['vendor']
+                        avg_price = float(product['unit_price'])
                         
-                        insights.append({
-                            'insight_type': '🚨 High Vendor Concentration Risk',
-                            'vendor': top_vendor_name,
-                            'metric': f"{concentration_risk:.1f}% of total spending (${top_vendor_spending:,.0f})",
-                            'recommendation': 'Diversify suppliers to reduce dependency and improve negotiation power',
-                            'potential_impact': 'High',
-                            'business_example': risk_example,
-                            'action_items': [
-                                'Identify 2-3 alternative vendors for key products',
-                                'Start with 20-30% of business to test new suppliers',
-                                'Negotiate better terms with current vendor using competition'
-                            ]
-                        })
-                    
-                    # High spending vendors for negotiation
-                    high_spending_vendors = vendor_summary[vendor_summary['total_spending'] > 5000]
-                    for _, vendor_row in high_spending_vendors.iterrows():
-                        vendor_name = str(vendor_row['vendor'])
-                        vendor_spending = float(vendor_row['total_spending'])
-                        vendor_invoice_count = int(vendor_row['invoice_count'])
-                        
-                        # Calculate average invoice safely
-                        if vendor_invoice_count > 0:
-                            avg_invoice = vendor_spending / vendor_invoice_count
-                        else:
-                            avg_invoice = vendor_spending
-                        
-                        monthly_spending = vendor_spending / 12
-                        
-                        if vendor_spending > 15000:
-                            leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly from your business. You can negotiate: 1) 5-10% bulk discount, 2) Net 30 payment terms (vs Net 15), 3) Free delivery, 4) Priority service. Potential savings: ${vendor_spending * 0.08:,.0f} annually"
+                        if len(vendors) > 1:
+                            insight_type = '🚨 High-Spending Product - Multi-Vendor Opportunity'
+                            recommendation = f'Consolidate {product_name} purchases to 1 vendor for bulk pricing'
+                            potential_savings = total_spending * 0.15  # 15% savings from consolidation
+                            business_example = f"Example: {product_name} costs you ${total_spending:,.2f} annually across {len(vendors)} vendors. Consolidating to 1 vendor could save ${potential_savings:,.2f} through bulk pricing and reduced admin costs."
                             action_items = [
-                                'Request bulk pricing tiers for monthly spending levels',
+                                f'Analyze pricing from all {len(vendors)} vendors for {product_name}',
+                                'Negotiate bulk pricing with preferred vendor',
+                                'Plan gradual transition over 2-3 months',
+                                'Monitor quality and service during transition'
+                            ]
+                        else:
+                            insight_type = '💰 High-Spending Product - Negotiation Opportunity'
+                            recommendation = f'Leverage high spending on {product_name} for better rates'
+                            potential_savings = total_spending * 0.10  # 10% savings from negotiation
+                            business_example = f"Example: {product_name} costs you ${total_spending:,.2f} annually from {vendors[0]}. You can negotiate: 1) 10-15% bulk discount, 2) Better payment terms, 3) Priority service, 4) Free delivery."
+                            action_items = [
+                                f'Request bulk pricing tiers for {product_name}',
                                 'Negotiate extended payment terms (Net 30-45)',
                                 'Ask for free delivery and priority service',
                                 'Request quarterly business reviews for pricing optimization'
                             ]
-                        else:
-                            leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly. You can negotiate: 1) 3-5% volume discount, 2) Better payment terms, 3) Consistent delivery scheduling. Potential savings: ${vendor_spending * 0.05:,.0f} annually"
-                            action_items = [
-                                'Request volume discounts for consistent ordering',
-                                'Negotiate better payment terms',
-                                'Establish regular delivery schedule',
-                                'Ask for loyalty program benefits'
-                            ]
                         
                         insights.append({
-                            'insight_type': '💰 High Spending Vendor - Negotiation Opportunity',
-                            'vendor': vendor_name,
-                            'metric': f"${vendor_spending:,.0f} total spending, ${avg_invoice:.0f} avg invoice",
-                            'recommendation': 'Leverage high spending for better rates, bulk discounts, or payment terms',
-                            'potential_impact': 'Medium',
-                            'business_example': leverage_example,
+                            'insight_type': insight_type,
+                            'vendor': f"Product: {product_name}",
+                            'metric': f"${total_spending:,.2f} annually, {frequency} orders",
+                            'recommendation': recommendation,
+                            'potential_impact': 'High',
+                            'business_example': business_example,
                             'action_items': action_items
                         })
             except Exception as e:
-                st.error(f"Error processing vendor summary: {e}")
+                st.error(f"Error processing top spending products: {e}")
             
-            # 2. Product category optimization opportunities
+            # 2. Most Frequently Ordered Products - Volume Optimization
             try:
-                category_analysis = pd.read_sql_query("""
+                frequent_products = pd.read_sql_query("""
+                    SELECT 
+                        l.description,
+                        l.category,
+                        COUNT(*) as order_count,
+                        SUM(l.quantity) as total_quantity,
+                        SUM(l.total_price) as total_spending,
+                        AVG(l.unit_price) as avg_unit_price,
+                        COUNT(DISTINCT i.vendor) as vendor_count
+                    FROM line_items l
+                    JOIN invoices i ON l.filename = i.filename
+                    WHERE l.description IS NOT NULL AND l.description != ''
+                        AND l.quantity > 0
+                    GROUP BY l.description, l.category
+                    HAVING order_count >= 3
+                    ORDER BY order_count DESC, total_spending DESC
+                    LIMIT 8
+                """, self.conn)
+                
+                if not frequent_products.empty:
+                    for _, product in frequent_products.iterrows():
+                        product_name = str(product['description'])
+                        order_count = int(product['order_count'])
+                        total_quantity = float(product['total_quantity'])
+                        total_spending = float(product['total_spending'])
+                        vendor_count = int(product['vendor_count'])
+                        avg_price = float(product['avg_unit_price'])
+                        
+                        if vendor_count > 1:
+                            consolidation_savings = total_spending * 0.12  # 12% savings from consolidation
+                            insight_type = '🔄 Frequently Ordered - Multi-Vendor Consolidation'
+                            recommendation = f'Consolidate {product_name} orders to reduce costs and improve efficiency'
+                            business_example = f"Example: {product_name} is ordered {order_count} times annually (${total_spending:,.2f}) from {vendor_count} vendors. Consolidating to 1 vendor could save ${consolidation_savings:,.2f} through: 1) Volume pricing, 2) Consistent delivery scheduling, 3) Reduced ordering complexity, 4) Better inventory management."
+                            action_items = [
+                                f'Evaluate all {vendor_count} vendors for {product_name}',
+                                'Select vendor with best pricing and service',
+                                'Negotiate volume discounts based on {order_count} annual orders',
+                                'Implement regular ordering schedule'
+                            ]
+                        else:
+                            volume_savings = total_spending * 0.08  # 8% savings from volume pricing
+                            insight_type = '📦 Frequently Ordered - Volume Pricing Opportunity'
+                            recommendation = f'Negotiate volume pricing for {product_name} based on high order frequency'
+                            business_example = f"Example: {product_name} is ordered {order_count} times annually (${total_spending:,.2f}) from current vendor. You can negotiate: 1) Volume pricing tiers, 2) Regular delivery scheduling, 3) Bulk ordering discounts, 4) Loyalty program benefits."
+                            action_items = [
+                                f'Request volume pricing for {product_name}',
+                                'Negotiate regular delivery schedule',
+                                'Ask for bulk ordering incentives',
+                                'Request loyalty program enrollment'
+                            ]
+                        
+                        insights.append({
+                            'insight_type': insight_type,
+                            'vendor': f"Product: {product_name}",
+                            'metric': f"{order_count} orders, {total_quantity:.0f} units, ${total_spending:,.2f}",
+                            'recommendation': recommendation,
+                            'potential_impact': 'Medium',
+                            'business_example': business_example,
+                            'action_items': action_items
+                        })
+            except Exception as e:
+                st.error(f"Error processing frequent products: {e}")
+            
+            # 3. High Unit Price Products - Price Optimization
+            try:
+                high_unit_price_products = pd.read_sql_query("""
+                    SELECT 
+                        l.description,
+                        l.category,
+                        i.vendor,
+                        l.unit_price,
+                        l.quantity,
+                        l.total_price,
+                        COUNT(*) as order_frequency
+                    FROM line_items l
+                    JOIN invoices i ON l.filename = i.filename
+                    WHERE l.description IS NOT NULL AND l.description != ''
+                        AND l.unit_price > 10  -- Focus on products with unit price > $10
+                        AND l.quantity > 0
+                    GROUP BY l.description, l.category, i.vendor, l.unit_price, l.quantity, l.total_price
+                    ORDER BY l.unit_price DESC
+                    LIMIT 8
+                """, self.conn)
+                
+                if not high_unit_price_products.empty:
+                    for _, product in high_unit_price_products.iterrows():
+                        product_name = str(product['description'])
+                        unit_price = float(product['unit_price'])
+                        quantity = float(product['quantity'])
+                        total_price = float(product['total_price'])
+                        vendor = str(product['vendor'])
+                        frequency = int(product['order_frequency'])
+                        
+                        # Check if this product is available from other vendors
+                        alternative_vendors = pd.read_sql_query("""
+                            SELECT DISTINCT i.vendor, AVG(l.unit_price) as avg_price
+                            FROM line_items l
+                            JOIN invoices i ON l.filename = i.filename
+                            WHERE l.description = ? AND i.vendor != ?
+                            GROUP BY i.vendor
+                        """, self.conn, params=(product_name, vendor))
+                        
+                        if not alternative_vendors.empty:
+                            best_alternative = alternative_vendors.loc[alternative_vendors['avg_price'].idxmin()]
+                            alternative_vendor = str(best_alternative['vendor'])
+                            alternative_price = float(best_alternative['avg_price'])
+                            price_difference = unit_price - alternative_price
+                            potential_savings = price_difference * quantity * frequency
+                            
+                            if price_difference > 0:
+                                insight_type = '💸 High Unit Price - Better Alternative Available'
+                                recommendation = f'Switch {product_name} to {alternative_vendor} for better pricing'
+                                business_example = f"Example: {product_name} costs ${unit_price:.2f} from {vendor} vs ${alternative_price:.2f} from {alternative_vendor}. Switching could save ${potential_savings:.2f} annually based on your ordering pattern."
+                                action_items = [
+                                    f'Test {product_name} from {alternative_vendor}',
+                                    'Compare quality and service between vendors',
+                                    'Plan gradual transition if quality is acceptable',
+                                    'Negotiate even better pricing with new vendor'
+                                ]
+                            else:
+                                insight_type = '✅ High Unit Price - Best Price Available'
+                                recommendation = f'Current pricing for {product_name} is competitive'
+                                business_example = f"Example: {product_name} at ${unit_price:.2f} from {vendor} is already the best price available. Focus optimization efforts on other products."
+                                action_items = [
+                                    'Monitor pricing trends for this product',
+                                    'Consider bulk ordering for additional discounts',
+                                    'Explore alternative products or suppliers',
+                                    'Maintain current vendor relationship'
+                                ]
+                        else:
+                            insight_type = '🔍 High Unit Price - Research Alternative Suppliers'
+                            recommendation = f'Research alternative suppliers for {product_name} to find better pricing'
+                            business_example = f"Example: {product_name} costs ${unit_price:.2f} from {vendor} with no alternatives found. Research new suppliers or negotiate better rates."
+                            action_items = [
+                                'Research new suppliers for this product',
+                                'Negotiate better rates with current vendor',
+                                'Consider alternative product options',
+                                'Join industry groups for supplier recommendations'
+                            ]
+                        
+                        insights.append({
+                            'insight_type': insight_type,
+                            'vendor': f"Product: {product_name}",
+                            'metric': f"${unit_price:.2f} unit price, {quantity:.0f} quantity, ${total_price:.2f} total",
+                            'recommendation': recommendation,
+                            'potential_impact': 'Medium',
+                            'business_example': business_example,
+                            'action_items': action_items
+                        })
+            except Exception as e:
+                st.error(f"Error processing high unit price products: {e}")
+            
+            # 4. Category Spending Analysis - Strategic Sourcing
+            try:
+                category_spending = pd.read_sql_query("""
                     SELECT 
                         l.category,
                         COUNT(DISTINCT i.vendor) as vendor_count,
-                        AVG(l.unit_price) as avg_price,
-                        SUM(l.total_price) as total_spending
+                        SUM(l.total_price) as total_spending,
+                        AVG(l.unit_price) as avg_unit_price,
+                        COUNT(*) as total_orders
                     FROM line_items l
                     JOIN invoices i ON l.filename = i.filename
                     WHERE l.category IS NOT NULL AND l.category != ''
+                        AND l.total_price > 0
                     GROUP BY l.category
-                    HAVING vendor_count > 1
+                    HAVING total_spending > 1000  -- Focus on categories with significant spending
                     ORDER BY total_spending DESC
                 """, self.conn)
                 
-                if not category_analysis.empty:
-                    for _, category_row in category_analysis.iterrows():
-                        category_name = str(category_row['category'])
-                        vendor_count = int(category_row['vendor_count'])
-                        category_spending = float(category_row['total_spending'])
+                if not category_spending.empty:
+                    for _, category in category_spending.iterrows():
+                        category_name = str(category['category'])
+                        vendor_count = int(category['vendor_count'])
+                        total_spending = float(category['total_spending'])
+                        total_orders = int(category['total_orders'])
                         
                         if vendor_count >= 3:
-                            consolidation_savings = category_spending * 0.05
-                            
-                            if "coffee" in category_name.lower():
-                                category_example = f"Example: You're buying coffee from {vendor_count} different vendors, spending ${category_spending:,.0f} annually. Consolidating to 1-2 vendors could save ${consolidation_savings:,.0f} through: 1) Bulk pricing, 2) Consistent quality, 3) Better delivery scheduling, 4) Reduced admin costs"
-                            elif "produce" in category_name.lower():
-                                category_example = f"Example: Fresh produce from {vendor_count} vendors costs ${category_spending:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume discounts, 2) Consistent quality standards, 3) Coordinated delivery schedules, 4) Better relationship management"
-                            elif "linen" in category_name.lower():
-                                category_example = f"Example: Linen services from {vendor_count} vendors cost ${category_spending:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume pricing, 2) Consistent service quality, 3) Simplified billing, 4) Better inventory management"
-                            else:
-                                category_example = f"Example: {category_name} from {vendor_count} vendors costs ${category_spending:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through better pricing and service coordination"
-                            
-                            insights.append({
-                                'insight_type': '🔄 Multi-Vendor Category - Consolidation Opportunity',
-                                'vendor': f"Category: {category_name}",
-                                'metric': f"{vendor_count} vendors, ${category_spending:,.0f} spending",
-                                'recommendation': 'Consolidate to 1-2 strategic vendors for better pricing and service',
-                                'potential_impact': 'Medium',
-                                'business_example': category_example,
-                                'action_items': [
-                                    'Evaluate vendor performance and pricing across all suppliers',
-                                    'Select top 2 vendors based on quality, price, and service',
-                                    'Negotiate volume discounts with selected vendors',
-                                    'Plan gradual transition over 2-3 months'
-                                ]
-                            })
+                            consolidation_savings = total_spending * 0.15  # 15% savings from consolidation
+                            insight_type = '🔄 Multi-Vendor Category - Strategic Consolidation'
+                            recommendation = f'Consolidate {category_name} sourcing to 1-2 strategic vendors'
+                            business_example = f"Example: {category_name} costs ${total_spending:,.2f} annually across {vendor_count} vendors. Consolidating to 1-2 vendors could save ${consolidation_savings:,.2f} through: 1) Volume pricing, 2) Consistent quality standards, 3) Coordinated delivery schedules, 4) Better relationship management."
+                            action_items = [
+                                'Evaluate all vendors for quality, price, and service',
+                                'Select top 2 vendors based on comprehensive criteria',
+                                'Negotiate volume discounts with selected vendors',
+                                'Plan gradual transition over 3-6 months'
+                            ]
+                        elif vendor_count == 2:
+                            optimization_savings = total_spending * 0.08  # 8% savings from optimization
+                            insight_type = '⚖️ Dual-Vendor Category - Optimization Opportunity'
+                            recommendation = f'Optimize {category_name} sourcing between 2 vendors for best pricing'
+                            business_example = f"Example: {category_name} costs ${total_spending:,.2f} annually from 2 vendors. You can optimize by: 1) Playing vendors against each other for better rates, 2) Splitting orders strategically, 3) Negotiating volume discounts from both, 4) Maintaining backup supplier relationships."
+                            action_items = [
+                                'Analyze pricing patterns from both vendors',
+                                'Negotiate competitive rates using dual-vendor leverage',
+                                'Develop strategic ordering plan',
+                                'Monitor performance and adjust strategy quarterly'
+                            ]
+                        else:
+                            relationship_savings = total_spending * 0.05  # 5% savings from relationship building
+                            insight_type = '🤝 Single-Vendor Category - Relationship Building'
+                            recommendation = f'Strengthen relationship with {category_name} vendor for better pricing'
+                            business_example = f"Example: {category_name} costs ${total_spending:,.2f} annually from single vendor. You can optimize by: 1) Building stronger relationship, 2) Negotiating volume discounts, 3) Requesting better payment terms, 4) Exploring exclusive pricing arrangements."
+                            action_items = [
+                                'Schedule quarterly business reviews with vendor',
+                                'Negotiate volume-based pricing tiers',
+                                'Request extended payment terms',
+                                'Explore exclusive or preferred customer programs'
+                            ]
+                        
+                        insights.append({
+                            'insight_type': insight_type,
+                            'vendor': f"Category: {category_name}",
+                            'metric': f"{vendor_count} vendors, ${total_spending:,.2f} spending, {total_orders} orders",
+                            'recommendation': recommendation,
+                            'potential_impact': 'Medium',
+                            'business_example': business_example,
+                            'action_items': action_items
+                        })
             except Exception as e:
-                st.error(f"Error processing category analysis: {e}")
-            
-            # 3. Seasonal and timing optimization opportunities
-            try:
-                seasonal_insights = pd.read_sql_query("""
-                    SELECT 
-                        strftime('%m', date) as month,
-                        SUM(total_amount) as monthly_spending,
-                        COUNT(*) as invoice_count
-                    FROM invoices 
-                    WHERE date IS NOT NULL AND date != ''
-                    GROUP BY strftime('%m', date)
-                    ORDER BY monthly_spending DESC
-                    LIMIT 3
-                """, self.conn)
-                
-                if not seasonal_insights.empty:
-                    peak_month_row = seasonal_insights.iloc[0]
-                    peak_month = str(peak_month_row['month'])
-                    peak_month_spending = float(peak_month_row['monthly_spending'])
-                    
-                    peak_month_name = {
-                        '01': 'January', '02': 'February', '03': 'March', '04': 'April',
-                        '05': 'May', '06': 'June', '07': 'July', '08': 'August',
-                        '09': 'September', '10': 'October', '11': 'November', '12': 'December'
-                    }.get(peak_month, peak_month)
-                    
-                    seasonal_example = f"Example: {peak_month_name} is your highest spending month (${peak_month_spending:,.0f}). Consider: 1) Pre-ordering supplies in slower months for better pricing, 2) Negotiating annual contracts to smooth out seasonal spikes, 3) Building inventory during low-demand periods"
-                    
-                    insights.append({
-                        'insight_type': '📅 Seasonal Spending Pattern - Inventory Optimization',
-                        'vendor': f"Peak Month: {peak_month_name}",
-                        'metric': f"${peak_month_spending:,.0f} spending in peak month",
-                        'recommendation': 'Optimize inventory planning and negotiate annual contracts to reduce seasonal cost spikes',
-                        'potential_impact': 'Medium',
-                        'business_example': seasonal_example,
-                        'action_items': [
-                            'Analyze 12-month spending patterns to identify trends',
-                            'Negotiate annual contracts with key vendors',
-                            'Implement inventory planning for seasonal variations',
-                            'Consider bulk purchasing during low-demand periods'
-                        ]
-                    })
-            except Exception as e:
-                st.error(f"Error processing seasonal insights: {e}")
+                st.error(f"Error processing category spending: {e}")
             
             return pd.DataFrame(insights)
         except Exception as e:
@@ -1181,7 +1305,9 @@ def show_combined_analysis(dashboard):
                 st.info("No vendor switching recommendations available")
         
         with insights_tab3:
-            st.markdown("### 💰 Strategic Cost Optimization Insights")
+            st.markdown("### 💰 Data-Driven Strategic Insights from Line Items")
+            st.info("🎯 **These insights are derived from your actual line items data, showing real spending patterns and optimization opportunities**")
+            
             strategic_insights = dashboard.get_strategic_cost_optimization_insights()
             if not strategic_insights.empty:
                 # Summary metrics for quick overview
@@ -1192,55 +1318,54 @@ def show_combined_analysis(dashboard):
                 medium_impact_count = len(strategic_insights[strategic_insights['potential_impact'] == 'Medium'])
                 
                 with col1:
-                    st.metric("High Impact Items", high_impact_count, help="Requires immediate attention")
+                    st.metric("High Impact Items", high_impact_count, help="Requires immediate attention - highest potential savings")
                 with col2:
-                    st.metric("Medium Impact Items", medium_impact_count, help="Plan for optimization")
+                    st.metric("Medium Impact Items", medium_impact_count, help="Plan for optimization - good savings potential")
                 with col3:
-                    st.metric("Total Insights", len(strategic_insights), help="All optimization opportunities")
+                    st.metric("Total Insights", len(strategic_insights), help="All optimization opportunities identified")
                 with col4:
-                    # Calculate estimated annual savings potential
-                    if not strategic_insights.empty and 'potential_impact' in strategic_insights.columns:
-                        high_impact_count = len(strategic_insights[strategic_insights['potential_impact'] == 'High'])
-                        if high_impact_count > 0:
-                            st.metric("Estimated Impact", "High", help=f"{high_impact_count} high impact items require immediate attention")
-                        else:
-                            st.metric("Estimated Impact", "Medium", help="Medium impact optimization opportunities available")
-                    else:
-                        st.metric("Estimated Impact", "Medium", help="Based on vendor concentration and spending patterns")
+                    # Calculate estimated total potential savings
+                    high_savings = high_impact_count * 0.15  # 15% average savings for high impact
+                    medium_savings = medium_impact_count * 0.08  # 8% average savings for medium impact
+                    total_potential_savings = high_savings + medium_savings
+                    st.metric("Estimated Total Savings", f"{total_potential_savings:.1f}%", help="Combined potential savings from all insights")
                 
                 st.markdown("---")
+                
+                # Insights by Type Summary
+                st.subheader("📈 Insights by Optimization Type")
+                
+                # Create a summary by insight type
+                insight_summary = strategic_insights.groupby('insight_type').agg({
+                    'vendor': 'count',
+                    'potential_impact': lambda x: list(x)
+                }).reset_index()
+                insight_summary.columns = ['Insight Type', 'Count', 'Impact Levels']
+                
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.dataframe(insight_summary, use_container_width=True)
+                with col2:
+                    # Quick stats
+                    st.metric("Total Products Analyzed", len(strategic_insights), 
+                            help="Number of products/categories with optimization opportunities")
+                    
+                    # Calculate estimated total potential savings
+                    high_savings = len(strategic_insights[strategic_insights['potential_impact'] == 'High']) * 0.15  # 15% average savings
+                    medium_savings = len(strategic_insights[strategic_insights['potential_impact'] == 'Medium']) * 0.08  # 8% average savings
+                    total_potential_savings = high_savings + medium_savings
+                    
+                    st.metric("Estimated Total Potential Savings", f"{total_potential_savings:.1f}%", 
+                            help="Combined potential savings from all insights")
+                
+                st.markdown("---")
+                
                 # High impact insights
                 high_impact = strategic_insights[strategic_insights['potential_impact'] == 'High']
                 if not high_impact.empty:
-                    st.error("**🚨 High Impact - Immediate Attention Required**")
-                    for _, insight in high_impact.iterrows():
-                        st.markdown(f"""
-                        <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px; padding: 1rem; margin: 0.5rem 0;">
-                            <h4 style="margin: 0 0 0.5rem 0; color: #721c24;">{insight['insight_type']}</h4>
-                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
-                            <p><strong>Metric:</strong> {insight['metric']}</p>
-                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                # Medium impact insights
-                medium_impact = strategic_insights[strategic_insights['potential_impact'] == 'Medium']
-                if not medium_impact.empty:
-                    st.warning("**⚠️ Medium Impact - Plan for Optimization**")
-                    for _, insight in medium_impact.iterrows():
-                        st.markdown(f"""
-                        <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 1rem; margin: 0.5rem 0;">
-                            <h4 style="margin: 0 0 0.5rem 0; color: #856404;">{insight['insight_type']}</h4>
-                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
-                            <p><strong>Metric:</strong> {insight['metric']}</p>
-                            <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                # Show detailed strategic insights with examples
-                st.write("**🚨 High Impact Insights (Immediate Attention Required):**")
-                high_impact = strategic_insights[strategic_insights['potential_impact'] == 'High']
-                if not high_impact.empty:
+                    st.error("**🚨 High Impact Insights - Immediate Action Required**")
+                    st.info("These insights represent your biggest cost optimization opportunities based on actual spending data.")
+                    
                     for _, insight in high_impact.iterrows():
                         # Safety check for optional columns
                         business_example = insight.get('business_example', 'No business example available')
@@ -1249,8 +1374,8 @@ def show_combined_analysis(dashboard):
                         st.markdown(f"""
                         <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px; padding: 1.5rem; margin: 1rem 0;">
                             <h4 style="margin: 0 0 1rem 0; color: #721c24;">{insight['insight_type']}</h4>
-                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
-                            <p><strong>Metric:</strong> {insight['metric']}</p>
+                            <p><strong>Product/Category:</strong> {insight['vendor']}</p>
+                            <p><strong>Spending Metric:</strong> {insight['metric']}</p>
                             <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
                             <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
                                 <strong>💡 Business Example:</strong><br>
@@ -1266,7 +1391,9 @@ def show_combined_analysis(dashboard):
                 # Medium impact insights
                 medium_impact = strategic_insights[strategic_insights['potential_impact'] == 'Medium']
                 if not medium_impact.empty:
-                    st.write("**⚠️ Medium Impact Insights (Plan for Optimization):**")
+                    st.warning("**⚠️ Medium Impact Insights - Strategic Planning**")
+                    st.info("These insights offer good optimization opportunities that should be planned over the next quarter.")
+                    
                     for _, insight in medium_impact.iterrows():
                         # Safety check for optional columns
                         business_example = insight.get('business_example', 'No business example available')
@@ -1275,8 +1402,8 @@ def show_combined_analysis(dashboard):
                         st.markdown(f"""
                         <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 1.5rem; margin: 1rem 0;">
                             <h4 style="margin: 0 0 1rem 0; color: #856404;">{insight['insight_type']}</h4>
-                            <p><strong>Vendor:</strong> {insight['vendor']}</p>
-                            <p><strong>Metric:</strong> {insight['metric']}</p>
+                            <p><strong>Product/Category:</strong> {insight['vendor']}</p>
+                            <p><strong>Spending Metric:</strong> {insight['metric']}</p>
                             <p><strong>Recommendation:</strong> {insight['recommendation']}</p>
                             <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
                                 <strong>💡 Business Example:</strong><br>
@@ -1289,12 +1416,21 @@ def show_combined_analysis(dashboard):
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # Summary table
-                st.write("**📊 All Strategic Insights Summary:**")
-                summary_df = strategic_insights[['insight_type', 'vendor', 'metric', 'potential_impact']].copy()
-                st.dataframe(summary_df, use_container_width=True)
+                # Complete Strategic Insights Summary
+                st.subheader("📋 Complete Strategic Insights Summary")
+                display_df = strategic_insights[['insight_type', 'vendor', 'metric', 'recommendation', 'potential_impact']].copy()
+                st.dataframe(display_df, use_container_width=True)
+                
+                # Download option
+                csv = display_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Strategic Insights as CSV",
+                    data=csv,
+                    file_name="strategic_insights_summary.csv",
+                    mime="text/csv"
+                )
             else:
-                st.info("No strategic insights available")
+                st.info("No strategic insights available. Check your data and try again.")
         
         with insights_tab4:
             st.markdown("### 📊 Time-Based Spending Analysis & Trends")
