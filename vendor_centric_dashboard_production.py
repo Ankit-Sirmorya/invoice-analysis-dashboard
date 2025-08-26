@@ -14,6 +14,7 @@ import json
 from datetime import datetime
 import numpy as np
 import os
+import re
 
 # Page configuration
 st.set_page_config(
@@ -739,6 +740,72 @@ class VendorCentricDashboard:
             st.error(f"Error getting vendor switching recommendations: {e}")
             return pd.DataFrame()
 
+    def clean_product_name(self, raw_name):
+        """Clean up product names by removing vendor names, dates, and other metadata."""
+        if not raw_name:
+            return "Unknown Product"
+        
+        # Check if this looks like a real product name (contains actual product info)
+        if any(keyword in raw_name.upper() for keyword in ['CHEESE', 'COFFEE', 'BAGEL', 'CREAM', 'MILK', 'BREAD', 'PRODUCE', 'LINEN', 'SERVICE']):
+            # This is likely a real product, clean it up
+            name = raw_name.strip()
+            
+            # Remove common prefixes that aren't product names
+            name = re.sub(r'^\d+\s+\d+\.\d+\s+\d+\s+', '', name)  # Remove "0 0.00 671778" type prefixes
+            name = re.sub(r'^\d+\s+\d+\.\d+\s+', '', name)  # Remove "0 0.00" type prefixes
+            
+            # Clean up extra whitespace
+            name = re.sub(r'\s+', ' ', name)
+            name = name.strip()
+            
+            return name if name else "Product"
+        
+        # For metadata descriptions, try to extract meaningful information
+        name = raw_name.strip()
+        
+        # Remove vendor names that commonly appear in descriptions
+        vendor_patterns = [
+            r'ankit\s+sirmorya\s*', r'westman\'s?\s*', r'bagel\s*and?\s*coffee\s*',
+            r'chemmark\s*of\s*washington\s*', r'costco\s*business\s*', r'costco\s*',
+            r'franks?\s*quality\s*produce\s*', r'over\s*the\s*moon\s*coffee\s*roasters\s*',
+            r'pacific\s*food\s*importers\s*', r'pfi\s*', r'tomlinson\s*linen\s*service\s*',
+            r'villa\s*jerada\s*', r'linen\s*service\s*', r'coffee\s*roasters\s*'
+        ]
+        
+        for pattern in vendor_patterns:
+            name = re.sub(pattern, '', name, flags=re.IGNORECASE)
+        
+        # Remove date patterns
+        name = re.sub(r'\d{1,2}/\d{1,2}/\d{2,4}', '', name)
+        name = re.sub(r'\d{1,2}-\d{1,2}-\d{2,4}', '', name)
+        name = re.sub(r'DATE', '', name, flags=re.IGNORECASE)
+        
+        # Remove invoice numbers and batch numbers
+        name = re.sub(r'INVOICE\s*\d+', '', name, flags=re.IGNORECASE)
+        name = re.sub(r'BATCH\s*\d+', '', name, flags=re.IGNORECASE)
+        name = re.sub(r'ARPFIINVOEBTCHLASER\s*\(\d+\)', '', name, flags=re.IGNORECASE)
+        
+        # Remove common metadata
+        name = re.sub(r'from\s+[^,]+', '', name, flags=re.IGNORECASE)
+        name = re.sub(r'\([^)]*\)', '', name)  # Remove parentheses content
+        
+        # Clean up extra whitespace and punctuation
+        name = re.sub(r'\s+', ' ', name)  # Multiple spaces to single space
+        name = name.strip(' ,.-_')
+        
+        # If the name is too short or generic after cleaning, use a more descriptive version
+        if len(name) < 3 or name.lower() in ['', 'product', 'item', 'goods', 'supplies']:
+            # Extract meaningful parts from the original name
+            parts = raw_name.split()
+            meaningful_parts = [part for part in parts if len(part) > 2 and part.lower() not in 
+                              ['ankit', 'sirmorya', 'westman', 'bagel', 'coffee', 'date', 'invoice', 'batch']]
+            if meaningful_parts:
+                name = ' '.join(meaningful_parts[:3])  # Take first 3 meaningful words
+            else:
+                name = raw_name[:50]  # Use first 50 characters if no meaningful parts
+        
+        return name if name else "Product"
+    
     def get_strategic_cost_optimization_insights(self):
         """Get comprehensive strategic cost optimization insights based on actual line items data."""
         try:
@@ -780,8 +847,10 @@ class VendorCentricDashboard:
                     top_products = product_totals.nlargest(5, 'total_price')
                     
                     for _, product in top_products.iterrows():
-                        product_name = str(product['description'])
-                        total_spending = float(product['total_price'])  # Fixed: was 'total_spending', should be 'total_price'
+                        raw_product_name = str(product['description'])
+                        # Clean up product name by removing vendor names and metadata
+                        product_name = self.clean_product_name(raw_product_name)
+                        total_spending = float(product['total_price'])
                         frequency = int(product['order_frequency'])
                         vendors = product['vendor']
                         avg_price = float(product['unit_price'])
@@ -844,7 +913,8 @@ class VendorCentricDashboard:
                 
                 if not frequent_products.empty:
                     for _, product in frequent_products.iterrows():
-                        product_name = str(product['description'])
+                        raw_product_name = str(product['description'])
+                        product_name = self.clean_product_name(raw_product_name)
                         order_count = int(product['order_count'])
                         total_quantity = float(product['total_quantity'])
                         total_spending = float(product['total_spending'])
@@ -909,7 +979,8 @@ class VendorCentricDashboard:
                 
                 if not high_unit_price_products.empty:
                     for _, product in high_unit_price_products.iterrows():
-                        product_name = str(product['description'])
+                        raw_product_name = str(product['description'])
+                        product_name = self.clean_product_name(raw_product_name)
                         unit_price = float(product['unit_price'])
                         quantity = float(product['quantity'])
                         total_price = float(product['total_price'])
