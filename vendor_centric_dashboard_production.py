@@ -803,42 +803,69 @@ def main():
     st.markdown("""
     <style>
     .main-header {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 50%, #2c3e50 100%);
-        padding: 3rem 2rem;
-        border-radius: 15px;
-        margin-bottom: 2rem;
+        background: linear-gradient(135deg, #1a252f 0%, #2c3e50 25%, #34495e 50%, #2c3e50 75%, #1a252f 100%);
+        padding: 4rem 2rem;
+        border-radius: 20px;
+        margin: 2rem 0 3rem 0;
         text-align: center;
         color: white;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 0 4px 20px rgba(0, 0, 0, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.15);
+        position: relative;
+        overflow: hidden;
+    }
+    .main-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%, rgba(255, 255, 255, 0.05) 100%);
+        pointer-events: none;
     }
     .main-header h1 {
         margin: 0;
-        font-size: 3rem;
-        font-weight: 800;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        font-size: 3.5rem;
+        font-weight: 900;
+        text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5), 1px 1px 2px rgba(0, 0, 0, 0.3);
         font-family: 'Georgia', serif;
+        color: #ffffff;
+        position: relative;
+        z-index: 2;
     }
     .main-header .restaurant-name {
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin: 0.5rem 0;
-        opacity: 0.95;
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 1rem 0;
+        opacity: 1;
         font-family: 'Georgia', serif;
+        color: #ffffff;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.4);
+        position: relative;
+        z-index: 2;
     }
     .main-header .dashboard-subtitle {
-        margin: 1rem 0 0 0;
-        font-size: 1.3rem;
-        opacity: 0.9;
-        font-weight: 300;
+        margin: 1.5rem 0 0 0;
+        font-size: 1.4rem;
+        opacity: 1;
+        font-weight: 400;
+        color: #e8f4fd;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+        position: relative;
+        z-index: 2;
     }
     .main-header .business-info {
-        background: rgba(255, 255, 255, 0.1);
-        padding: 1rem;
-        border-radius: 10px;
-        margin-top: 1.5rem;
+        background: rgba(255, 255, 255, 0.15);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin-top: 2rem;
         display: inline-block;
-        backdrop-filter: blur(10px);
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        position: relative;
+        z-index: 2;
     }
     .metric-card {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -896,19 +923,37 @@ def main():
         font-family: 'Georgia', serif;
     }
     .business-summary {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        padding: 2rem;
-        border-radius: 15px;
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #e9ecef 100%);
+        padding: 2.5rem;
+        border-radius: 20px;
         margin: 2rem 0;
-        border: 1px solid #dee2e6;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        border: 2px solid #dee2e6;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08), 0 4px 15px rgba(0, 0, 0, 0.05);
+        position: relative;
+        overflow: hidden;
+    }
+    .business-summary::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #3498db, #2c3e50, #34495e);
     }
     .business-summary h3 {
         color: #2c3e50;
-        margin: 0 0 1rem 0;
-        font-size: 1.5rem;
-        font-weight: 600;
+        margin: 0 0 1.5rem 0;
+        font-size: 1.8rem;
+        font-weight: 700;
         font-family: 'Georgia', serif;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+    }
+    .business-summary p {
+        font-size: 1.1rem;
+        line-height: 1.6;
+        color: #495057;
+        margin-bottom: 1rem;
     }
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
@@ -948,6 +993,48 @@ def main():
     }
     .stSelectbox > div > div:hover {
         border-color: #2c3e50;
+    }
+    
+    /* Enhanced visibility and animations */
+    .main-header h1, .main-header .restaurant-name, .main-header .dashboard-subtitle {
+        animation: fadeInUp 0.8s ease-out;
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Ensure proper contrast and visibility */
+    .main-header {
+        position: relative;
+        z-index: 10;
+    }
+    
+    /* Enhanced text readability */
+    .main-header * {
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .main-header h1 {
+            font-size: 2.5rem;
+        }
+        .main-header .restaurant-name {
+            font-size: 1.5rem;
+        }
+        .main-header .dashboard-subtitle {
+            font-size: 1.1rem;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
