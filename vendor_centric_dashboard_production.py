@@ -747,164 +747,180 @@ class VendorCentricDashboard:
             
             insights = []
             
-            # 1. High spending vendors with optimization potential
-            vendor_summary = pd.read_sql_query("""
-                SELECT vendor, SUM(total_amount) as total_spending, COUNT(*) as invoice_count
-                FROM invoices 
-                WHERE vendor IS NOT NULL AND vendor != ''
-                GROUP BY vendor
-                ORDER BY total_spending DESC
-            """, self.conn)
-            
-            if not vendor_summary.empty:
-                total_spending = vendor_summary['total_spending'].sum()
+            # 1. High spending vendors with optimization potential - Simplified approach
+            try:
+                vendor_summary = pd.read_sql_query("""
+                    SELECT vendor, SUM(total_amount) as total_spending, COUNT(*) as invoice_count
+                    FROM invoices 
+                    WHERE vendor IS NOT NULL AND vendor != ''
+                    GROUP BY vendor
+                    ORDER BY total_spending DESC
+                """, self.conn)
                 
-                # High concentration risk
-                top_vendor = vendor_summary.iloc[0]
-                if top_vendor['total_spending'] / total_spending > 0.4:
-                    concentration_risk = top_vendor['total_spending'] / total_spending * 100
-                    risk_example = f"Example: {top_vendor['vendor']} represents {concentration_risk:.1f}% of your total spending (${top_vendor['total_spending']:,.0f} out of ${total_spending:,.0f}). If they raise prices by 10%, your costs increase by ${top_vendor['total_spending'] * 0.1:,.0f} annually. Diversifying reduces this risk."
+                if not vendor_summary.empty:
+                    total_spending = vendor_summary['total_spending'].sum()
                     
-                    insights.append({
-                        'insight_type': '🚨 High Vendor Concentration Risk',
-                        'vendor': top_vendor['vendor'],
-                        'metric': f"{concentration_risk:.1f}% of total spending (${top_vendor['total_spending']:,.0f})",
-                        'recommendation': 'Diversify suppliers to reduce dependency and improve negotiation power',
-                        'potential_impact': 'High',
-                        'business_example': risk_example,
-                        'action_items': [
-                            'Identify 2-3 alternative vendors for key products',
-                            'Start with 20-30% of business to test new suppliers',
-                            'Negotiate better terms with current vendor using competition'
-                        ]
-                    })
-                
-                # High spending vendors for negotiation
-                high_spending_vendors = vendor_summary[vendor_summary['total_spending'] > 5000]
-                for _, vendor in high_spending_vendors.iterrows():
-                    # Calculate negotiation leverage potential
-                    # Use .iloc to access by position to avoid column name issues
-                    vendor_name = vendor.iloc[0] if hasattr(vendor, 'iloc') else vendor['vendor']
-                    total_spending = vendor.iloc[1] if hasattr(vendor, 'iloc') else vendor['total_spending']
-                    invoice_count = vendor.iloc[2] if hasattr(vendor, 'iloc') else vendor.get('invoice_count', 1)
+                    # High concentration risk
+                    top_vendor_row = vendor_summary.iloc[0]
+                    top_vendor_name = str(top_vendor_row['vendor'])
+                    top_vendor_spending = float(top_vendor_row['total_spending'])
                     
-                    if invoice_count > 0:
-                        avg_invoice = total_spending / invoice_count
-                    else:
-                        avg_invoice = total_spending  # Fallback if no invoice count
-                    
-                    monthly_spending = total_spending / 12  # Assuming 12 months of data
-                    
-                    if total_spending > 15000:
-                        leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly from your business. You can negotiate: 1) 5-10% bulk discount, 2) Net 30 payment terms (vs Net 15), 3) Free delivery, 4) Priority service. Potential savings: ${total_spending * 0.08:,.0f} annually"
-                        action_items = [
-                            'Request bulk pricing tiers for monthly spending levels',
-                            'Negotiate extended payment terms (Net 30-45)',
-                            'Ask for free delivery and priority service',
-                            'Request quarterly business reviews for pricing optimization'
-                        ]
-                    else:
-                        leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly. You can negotiate: 1) 3-5% volume discount, 2) Better payment terms, 3) Consistent delivery scheduling. Potential savings: ${total_spending * 0.05:,.0f} annually"
-                        action_items = [
-                            'Request volume discounts for consistent ordering',
-                            'Negotiate better payment terms',
-                            'Establish regular delivery schedule',
-                            'Ask for loyalty program benefits'
-                        ]
-                    
-                    insights.append({
-                        'insight_type': '💰 High Spending Vendor - Negotiation Opportunity',
-                        'vendor': vendor_name,
-                        'metric': f"${total_spending:,.0f} total spending, ${avg_invoice:.0f} avg invoice",
-                        'recommendation': 'Leverage high spending for better rates, bulk discounts, or payment terms',
-                        'potential_impact': 'Medium',
-                        'business_example': leverage_example,
-                        'action_items': action_items
-                    })
-            
-            # 2. Product category optimization opportunities
-            category_analysis = pd.read_sql_query("""
-                SELECT 
-                    l.category,
-                    COUNT(DISTINCT i.vendor) as vendor_count,
-                    AVG(l.unit_price) as avg_price,
-                    SUM(l.total_price) as total_spending
-                FROM line_items l
-                JOIN invoices i ON l.filename = i.filename
-                WHERE l.category IS NOT NULL AND l.category != ''
-                GROUP BY l.category
-                HAVING vendor_count > 1
-                ORDER BY total_spending DESC
-            """, self.conn)
-            
-            if not category_analysis.empty:
-                for _, category in category_analysis.iterrows():
-                    if category['vendor_count'] >= 3:
-                        # Calculate consolidation savings potential
-                        avg_price = category['avg_price']
-                        consolidation_savings = category['total_spending'] * 0.05  # 5% savings from consolidation
-                        
-                        if "coffee" in category['category'].lower():
-                            category_example = f"Example: You're buying coffee from {category['vendor_count']} different vendors, spending ${category['total_spending']:,.0f} annually. Consolidating to 1-2 vendors could save ${consolidation_savings:,.0f} through: 1) Bulk pricing, 2) Consistent quality, 3) Better delivery scheduling, 4) Reduced admin costs"
-                        elif "produce" in category['category'].lower():
-                            category_example = f"Example: Fresh produce from {category['vendor_count']} vendors costs ${category['total_spending']:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume discounts, 2) Consistent quality standards, 3) Coordinated delivery schedules, 4) Better relationship management"
-                        elif "linen" in category['category'].lower():
-                            category_example = f"Example: Linen services from {category['vendor_count']} vendors cost ${category['total_spending']:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume pricing, 2) Consistent service quality, 3) Simplified billing, 4) Better inventory management"
-                        else:
-                            category_example = f"Example: {category['category']} from {category['vendor_count']} vendors costs ${category['total_spending']:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through better pricing and service coordination"
+                    if top_vendor_spending / total_spending > 0.4:
+                        concentration_risk = (top_vendor_spending / total_spending) * 100
+                        risk_example = f"Example: {top_vendor_name} represents {concentration_risk:.1f}% of your total spending (${top_vendor_spending:,.0f} out of ${total_spending:,.0f}). If they raise prices by 10%, your costs increase by ${top_vendor_spending * 0.1:,.0f} annually. Diversifying reduces this risk."
                         
                         insights.append({
-                            'insight_type': '🔄 Multi-Vendor Category - Consolidation Opportunity',
-                            'vendor': f"Category: {category['category']}",
-                            'metric': f"{category['vendor_count']} vendors, ${category['total_spending']:,.0f} spending",
-                            'recommendation': 'Consolidate to 1-2 strategic vendors for better pricing and service',
-                            'potential_impact': 'Medium',
-                            'business_example': category_example,
+                            'insight_type': '🚨 High Vendor Concentration Risk',
+                            'vendor': top_vendor_name,
+                            'metric': f"{concentration_risk:.1f}% of total spending (${top_vendor_spending:,.0f})",
+                            'recommendation': 'Diversify suppliers to reduce dependency and improve negotiation power',
+                            'potential_impact': 'High',
+                            'business_example': risk_example,
                             'action_items': [
-                                'Evaluate vendor performance and pricing across all suppliers',
-                                'Select top 2 vendors based on quality, price, and service',
-                                'Negotiate volume discounts with selected vendors',
-                                'Plan gradual transition over 2-3 months'
+                                'Identify 2-3 alternative vendors for key products',
+                                'Start with 20-30% of business to test new suppliers',
+                                'Negotiate better terms with current vendor using competition'
                             ]
                         })
+                    
+                    # High spending vendors for negotiation
+                    high_spending_vendors = vendor_summary[vendor_summary['total_spending'] > 5000]
+                    for _, vendor_row in high_spending_vendors.iterrows():
+                        vendor_name = str(vendor_row['vendor'])
+                        vendor_spending = float(vendor_row['total_spending'])
+                        vendor_invoice_count = int(vendor_row['invoice_count'])
+                        
+                        # Calculate average invoice safely
+                        if vendor_invoice_count > 0:
+                            avg_invoice = vendor_spending / vendor_invoice_count
+                        else:
+                            avg_invoice = vendor_spending
+                        
+                        monthly_spending = vendor_spending / 12
+                        
+                        if vendor_spending > 15000:
+                            leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly from your business. You can negotiate: 1) 5-10% bulk discount, 2) Net 30 payment terms (vs Net 15), 3) Free delivery, 4) Priority service. Potential savings: ${vendor_spending * 0.08:,.0f} annually"
+                            action_items = [
+                                'Request bulk pricing tiers for monthly spending levels',
+                                'Negotiate extended payment terms (Net 30-45)',
+                                'Ask for free delivery and priority service',
+                                'Request quarterly business reviews for pricing optimization'
+                            ]
+                        else:
+                            leverage_example = f"Example: {vendor_name} receives ${monthly_spending:,.0f} monthly. You can negotiate: 1) 3-5% volume discount, 2) Better payment terms, 3) Consistent delivery scheduling. Potential savings: ${vendor_spending * 0.05:,.0f} annually"
+                            action_items = [
+                                'Request volume discounts for consistent ordering',
+                                'Negotiate better payment terms',
+                                'Establish regular delivery schedule',
+                                'Ask for loyalty program benefits'
+                            ]
+                        
+                        insights.append({
+                            'insight_type': '💰 High Spending Vendor - Negotiation Opportunity',
+                            'vendor': vendor_name,
+                            'metric': f"${vendor_spending:,.0f} total spending, ${avg_invoice:.0f} avg invoice",
+                            'recommendation': 'Leverage high spending for better rates, bulk discounts, or payment terms',
+                            'potential_impact': 'Medium',
+                            'business_example': leverage_example,
+                            'action_items': action_items
+                        })
+            except Exception as e:
+                st.error(f"Error processing vendor summary: {e}")
+            
+            # 2. Product category optimization opportunities
+            try:
+                category_analysis = pd.read_sql_query("""
+                    SELECT 
+                        l.category,
+                        COUNT(DISTINCT i.vendor) as vendor_count,
+                        AVG(l.unit_price) as avg_price,
+                        SUM(l.total_price) as total_spending
+                    FROM line_items l
+                    JOIN invoices i ON l.filename = i.filename
+                    WHERE l.category IS NOT NULL AND l.category != ''
+                    GROUP BY l.category
+                    HAVING vendor_count > 1
+                    ORDER BY total_spending DESC
+                """, self.conn)
+                
+                if not category_analysis.empty:
+                    for _, category_row in category_analysis.iterrows():
+                        category_name = str(category_row['category'])
+                        vendor_count = int(category_row['vendor_count'])
+                        category_spending = float(category_row['total_spending'])
+                        
+                        if vendor_count >= 3:
+                            consolidation_savings = category_spending * 0.05
+                            
+                            if "coffee" in category_name.lower():
+                                category_example = f"Example: You're buying coffee from {vendor_count} different vendors, spending ${category_spending:,.0f} annually. Consolidating to 1-2 vendors could save ${consolidation_savings:,.0f} through: 1) Bulk pricing, 2) Consistent quality, 3) Better delivery scheduling, 4) Reduced admin costs"
+                            elif "produce" in category_name.lower():
+                                category_example = f"Example: Fresh produce from {vendor_count} vendors costs ${category_spending:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume discounts, 2) Consistent quality standards, 3) Coordinated delivery schedules, 4) Better relationship management"
+                            elif "linen" in category_name.lower():
+                                category_example = f"Example: Linen services from {vendor_count} vendors cost ${category_spending:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through: 1) Volume pricing, 2) Consistent service quality, 3) Simplified billing, 4) Better inventory management"
+                            else:
+                                category_example = f"Example: {category_name} from {vendor_count} vendors costs ${category_spending:,.0f} annually. Consolidating could save ${consolidation_savings:,.0f} through better pricing and service coordination"
+                            
+                            insights.append({
+                                'insight_type': '🔄 Multi-Vendor Category - Consolidation Opportunity',
+                                'vendor': f"Category: {category_name}",
+                                'metric': f"{vendor_count} vendors, ${category_spending:,.0f} spending",
+                                'recommendation': 'Consolidate to 1-2 strategic vendors for better pricing and service',
+                                'potential_impact': 'Medium',
+                                'business_example': category_example,
+                                'action_items': [
+                                    'Evaluate vendor performance and pricing across all suppliers',
+                                    'Select top 2 vendors based on quality, price, and service',
+                                    'Negotiate volume discounts with selected vendors',
+                                    'Plan gradual transition over 2-3 months'
+                                ]
+                            })
+            except Exception as e:
+                st.error(f"Error processing category analysis: {e}")
             
             # 3. Seasonal and timing optimization opportunities
-            seasonal_insights = pd.read_sql_query("""
-                SELECT 
-                    strftime('%m', date) as month,
-                    SUM(total_amount) as monthly_spending,
-                    COUNT(*) as invoice_count
-                FROM invoices 
-                WHERE date IS NOT NULL AND date != ''
-                GROUP BY strftime('%m', date)
-                ORDER BY monthly_spending DESC
-                LIMIT 3
-            """, self.conn)
-            
-            if not seasonal_insights.empty:
-                peak_month = seasonal_insights.iloc[0]
-                peak_month_name = {
-                    '01': 'January', '02': 'February', '03': 'March', '04': 'April',
-                    '05': 'May', '06': 'June', '07': 'July', '08': 'August',
-                    '09': 'September', '10': 'October', '11': 'November', '12': 'December'
-                }.get(peak_month['month'], peak_month['month'])
+            try:
+                seasonal_insights = pd.read_sql_query("""
+                    SELECT 
+                        strftime('%m', date) as month,
+                        SUM(total_amount) as monthly_spending,
+                        COUNT(*) as invoice_count
+                    FROM invoices 
+                    WHERE date IS NOT NULL AND date != ''
+                    GROUP BY strftime('%m', date)
+                    ORDER BY monthly_spending DESC
+                    LIMIT 3
+                """, self.conn)
                 
-                seasonal_example = f"Example: {peak_month_name} is your highest spending month (${peak_month['monthly_spending']:,.0f}). Consider: 1) Pre-ordering supplies in slower months for better pricing, 2) Negotiating annual contracts to smooth out seasonal spikes, 3) Building inventory during low-demand periods"
-                
-                insights.append({
-                    'insight_type': '📅 Seasonal Spending Pattern - Inventory Optimization',
-                    'vendor': f"Peak Month: {peak_month_name}",
-                    'metric': f"${peak_month['monthly_spending']:,.0f} spending in peak month",
-                    'recommendation': 'Optimize inventory planning and negotiate annual contracts to reduce seasonal cost spikes',
-                    'potential_impact': 'Medium',
-                    'business_example': seasonal_example,
-                    'action_items': [
-                        'Analyze 12-month spending patterns to identify trends',
-                        'Negotiate annual contracts with key vendors',
-                        'Implement inventory planning for seasonal variations',
-                        'Consider bulk purchasing during low-demand periods'
-                    ]
-                })
+                if not seasonal_insights.empty:
+                    peak_month_row = seasonal_insights.iloc[0]
+                    peak_month = str(peak_month_row['month'])
+                    peak_month_spending = float(peak_month_row['monthly_spending'])
+                    
+                    peak_month_name = {
+                        '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+                        '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+                        '09': 'September', '10': 'October', '11': 'November', '12': 'December'
+                    }.get(peak_month, peak_month)
+                    
+                    seasonal_example = f"Example: {peak_month_name} is your highest spending month (${peak_month_spending:,.0f}). Consider: 1) Pre-ordering supplies in slower months for better pricing, 2) Negotiating annual contracts to smooth out seasonal spikes, 3) Building inventory during low-demand periods"
+                    
+                    insights.append({
+                        'insight_type': '📅 Seasonal Spending Pattern - Inventory Optimization',
+                        'vendor': f"Peak Month: {peak_month_name}",
+                        'metric': f"${peak_month_spending:,.0f} spending in peak month",
+                        'recommendation': 'Optimize inventory planning and negotiate annual contracts to reduce seasonal cost spikes',
+                        'potential_impact': 'Medium',
+                        'business_example': seasonal_example,
+                        'action_items': [
+                            'Analyze 12-month spending patterns to identify trends',
+                            'Negotiate annual contracts with key vendors',
+                            'Implement inventory planning for seasonal variations',
+                            'Consider bulk purchasing during low-demand periods'
+                        ]
+                    })
+            except Exception as e:
+                st.error(f"Error processing seasonal insights: {e}")
             
             return pd.DataFrame(insights)
         except Exception as e:
