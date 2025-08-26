@@ -803,14 +803,14 @@ def main():
     st.markdown("""
     <style>
     .main-header {
-        background: linear-gradient(135deg, #1a252f 0%, #2c3e50 25%, #34495e 50%, #2c3e50 75%, #1a252f 100%);
+        background: linear-gradient(135deg, #8B0000 0%, #DC143C 25%, #FF4500 50%, #DC143C 75%, #8B0000 100%);
         padding: 4rem 2rem;
         border-radius: 20px;
         margin: 2rem 0 3rem 0;
         text-align: center;
         color: white;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 0 4px 20px rgba(0, 0, 0, 0.1);
-        border: 2px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 15px 50px rgba(139, 0, 0, 0.4), 0 8px 25px rgba(0, 0, 0, 0.3);
+        border: 3px solid rgba(255, 255, 255, 0.25);
         position: relative;
         overflow: hidden;
     }
@@ -821,7 +821,7 @@ def main():
         left: 0;
         right: 0;
         bottom: 0;
-        background: linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%, rgba(255, 255, 255, 0.05) 100%);
+        background: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%, rgba(255, 255, 255, 0.1) 100%);
         pointer-events: none;
     }
     .main-header h1 {
@@ -856,16 +856,17 @@ def main():
         z-index: 2;
     }
     .main-header .business-info {
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.25);
         padding: 1.5rem;
         border-radius: 15px;
         margin-top: 2rem;
         display: inline-block;
         backdrop-filter: blur(15px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2), 0 4px 15px rgba(0, 0, 0, 0.1);
         position: relative;
         z-index: 2;
+        font-weight: 600;
     }
     .metric-card {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -907,14 +908,14 @@ def main():
         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
     }
     .vendor-header {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        background: linear-gradient(135deg, #8B0000 0%, #DC143C 100%);
         color: white;
         padding: 2rem;
         border-radius: 15px;
         text-align: center;
         margin: 2rem 0;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 25px rgba(139, 0, 0, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2);
+        border: 2px solid rgba(255, 255, 255, 0.2);
     }
     .vendor-header h2 {
         margin: 0;
@@ -939,7 +940,7 @@ def main():
         left: 0;
         right: 0;
         height: 4px;
-        background: linear-gradient(90deg, #3498db, #2c3e50, #34495e);
+        background: linear-gradient(90deg, #8B0000, #DC143C, #FF4500);
     }
     .business-summary h3 {
         color: #2c3e50;
@@ -973,9 +974,9 @@ def main():
         transition: all 0.2s ease;
     }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        background: linear-gradient(135deg, #8B0000 0%, #DC143C 100%);
         color: white;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
         transform: translateY(-1px);
     }
     .stTabs [data-baseweb="tab"]:hover {
@@ -1077,7 +1078,7 @@ def main():
         
         # Enhanced sidebar for restaurant operations
         st.sidebar.markdown("""
-        <div style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); padding: 1.5rem; border-radius: 15px; color: white; margin-bottom: 2rem;">
+        <div style="background: linear-gradient(135deg, #8B0000 0%, #DC143C 100%); padding: 1.5rem; border-radius: 15px; color: white; margin-bottom: 2rem; box-shadow: 0 6px 20px rgba(139, 0, 0, 0.3);">
             <h2 style="margin: 0; text-align: center; font-family: 'Georgia', serif;">🥯 Westman's Bagels</h2>
             <p style="text-align: center; margin: 0.5rem 0; opacity: 0.9;">Vendor Management Dashboard</p>
         </div>
